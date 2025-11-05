@@ -5,8 +5,6 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
-import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
@@ -180,38 +178,6 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
           expiration: cdk.Duration.days(90),
         },
       ],
-    });
-
-    // CloudFront distribution for frontend
-    const originAccessIdentity = new cloudfront.OriginAccessIdentity(this, 'OAI');
-    frontendBucket.grantRead(originAccessIdentity);
-
-    const distribution = new cloudfront.Distribution(this, 'FrontendDistribution', {
-      defaultBehavior: {
-        origin: new origins.S3Origin(frontendBucket, {
-          originAccessIdentity,
-        }),
-        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-        allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
-        cachedMethods: cloudfront.CachedMethods.CACHE_GET_HEAD_OPTIONS,
-        compress: true,
-      },
-      defaultRootObject: 'index.html',
-      errorResponses: [
-        {
-          httpStatus: 404,
-          responseHttpStatus: 200,
-          responsePagePath: '/index.html',
-          ttl: cdk.Duration.minutes(5),
-        },
-        {
-          httpStatus: 403,
-          responseHttpStatus: 200,
-          responsePagePath: '/index.html',
-          ttl: cdk.Duration.minutes(5),
-        },
-      ],
-      priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
     });
 
     // ============================================
@@ -625,24 +591,6 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       value: api.url,
       description: 'API Gateway endpoint URL',
       exportName: 'RealtorLeadApiEndpoint',
-    });
-
-    new cdk.CfnOutput(this, 'FrontendBucketName', {
-      value: frontendBucket.bucketName,
-      description: 'S3 bucket for frontend hosting',
-      exportName: 'RealtorLeadFrontendBucket',
-    });
-
-    new cdk.CfnOutput(this, 'CloudFrontDistributionId', {
-      value: distribution.distributionId,
-      description: 'CloudFront distribution ID',
-      exportName: 'RealtorLeadDistributionId',
-    });
-
-    new cdk.CfnOutput(this, 'CloudFrontDomainName', {
-      value: distribution.distributionDomainName,
-      description: 'CloudFront distribution domain name',
-      exportName: 'RealtorLeadDistributionDomain',
     });
 
     new cdk.CfnOutput(this, 'StepFunctionArn', {
