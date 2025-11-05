@@ -1,0 +1,159 @@
+.purchase-history {
+  padding: 2rem 1rem;
+}
+
+.purchase-history h1 {
+  margin-bottom: 0.5rem;
+}
+
+.purchases-count {
+  padding: 1rem;
+  background-color: var(--bg-secondary);
+  border-radius: 6px;
+  margin-bottom: 1.5rem;
+  font-size: 1.125rem;
+}
+
+.purchases-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.purchase-card {
+  border-left: 4px solid var(--primary-color);
+}
+
+.purchase-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.purchase-header h3 {
+  margin: 0 0 0.5rem 0;
+}
+
+.purchase-date {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.purchase-amount {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--primary-color);
+}
+
+.lead-info-purchase {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.info-section h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 1.125rem;
+  color: var(--text-primary);
+}
+
+.contact-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.contact-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem;
+  background-color: var(--bg-secondary);
+  border-radius: 6px;
+}
+
+.contact-row .label {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.contact-row .value {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.contact-row .link {
+  color: var(--primary-color);
+  text-decoration: none;
+}
+
+.contact-row .link:hover {
+  text-decoration: underline;
+}
+
+.ai-reason {
+  font-style: italic;
+  padding: 1rem;
+  background-color: var(--bg-secondary);
+  border-radius: 6px;
+  border-left: 4px solid var(--secondary-color);
+  margin: 0;
+}
+
+.responses-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.response-row {
+  padding: 0.75rem;
+  background-color: var(--bg-secondary);
+  border-radius: 6px;
+}
+
+.response-row .question {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  color: var(--text-primary);
+}
+
+.response-row .answer {
+  color: var(--text-secondary);
+}
+
+.purchase-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.transaction-id {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-family: monospace;
+}
+
+@media (max-width: 768px) {
+  .purchase-header {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .purchase-amount {
+    font-size: 1.5rem;
+  }
+
+  .contact-row {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}

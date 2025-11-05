@@ -1,0 +1,62 @@
+import axios from 'axios';
+import { fetchAuthSession } from 'aws-amplify/auth';
+
+const API_ENDPOINT = import.meta.env.VITE_API_ENDPOINT || '';
+
+// Create axios instance with interceptor for auth token
+const apiClient = axios.create({
+  baseURL: API_ENDPOINT,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Add auth token to all requests
+apiClient.interceptors.request.use(async (config) => {
+  try {
+    const session = await fetchAuthSession();
+    const token = session.tokens?.idToken?.toString();
+    
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  } catch (error) {
+    console.error('Failed to get auth token:', error);
+  }
+  
+  return config;
+});
+
+// Agent Profile APIs
+export const agentAPI = {
+  getProfile: () => apiClient.get('/agents'),
+  createProfile: (data) => apiClient.post('/agents', data),
+  updateProfile: (data) => apiClient.put('/agents', data),
+};
+
+// Marketplace APIs
+export const marketplaceAPI = {
+  getLeads: (params) => apiClient.get('/marketplace', { params }),
+  getLead: (leadId) => apiClient.get(`/leads/${leadId}`),
+};
+
+// Payment APIs
+export const paymentAPI = {
+  purchaseLead: (data) => apiClient.post('/payments/purchase', data),
+};
+
+// Lead Submission API (for testing)
+export const leadAPI = {
+  submitLead: (data) => apiClient.post('/leads', data),
+};
+
+// Admin APIs
+export const adminAPI = {
+  getDashboard: () => apiClient.get('/admin', { params: { action: 'dashboard' } }),
+  getLeads: (params) => apiClient.get('/admin', { params: { action: 'leads', ...params } }),
+  getAgents: (params) => apiClient.get('/admin', { params: { action: 'agents', ...params } }),
+  getTransactions: (params) => apiClient.get('/admin', { params: { action: 'transactions', ...params } }),
+  performAction: (data) => apiClient.post('/admin', data),
+};
+
+export default apiClient;

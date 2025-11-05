@@ -1,0 +1,33 @@
+{
+  "name": "realtor-lead-backend",
+  "version": "1.0.0",
+  "description": "Backend Lambda functions for Realtor Lead Platform",
+  "main": "index.js",
+  "scripts": {
+    "build": "node scripts/bundle.js",
+    "build-old": "tsc && npm run copy-handlers",
+    "copy-handlers": "node scripts/copy-handlers.js",
+    "watch": "tsc -w",
+    "test": "jest",
+    "lint": "eslint . --ext .ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.470.0",
+    "@aws-sdk/client-dynamodb": "^3.470.0",
+    "@aws-sdk/client-location": "^3.470.0",
+    "@aws-sdk/lib-dynamodb": "^3.470.0",
+    "stripe": "^14.5.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.131",
+    "@types/node": "^20.10.0",
+    "@types/uuid": "^9.0.7",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "esbuild": "^0.25.12",
+    "eslint": "^8.54.0",
+    "jest": "^29.7.0",
+    "typescript": "^5.3.3"
+  }
+}

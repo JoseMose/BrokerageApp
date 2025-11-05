@@ -1,0 +1,26 @@
+{
+  "name": "realtor-lead-generation-platform",
+  "version": "1.0.0",
+  "description": "AI-powered real estate lead scoring and distribution platform on AWS",
+  "main": "index.js",
+  "scripts": {
+    "cdk:deploy": "cd infrastructure && npm run deploy",
+    "cdk:destroy": "cd infrastructure && npm run destroy",
+    "cdk:synth": "cd infrastructure && npm run synth",
+    "backend:build": "cd backend && npm run build",
+    "backend:test": "cd backend && npm run test",
+    "frontend:dev": "cd frontend && npm start",
+    "frontend:build": "cd frontend && npm run build",
+    "install:all": "npm install && cd infrastructure && npm install && cd ../backend && npm install && cd ../frontend && npm install"
+  },
+  "keywords": [
+    "real-estate",
+    "lead-scoring",
+    "aws",
+    "serverless",
+    "bedrock",
+    "ai"
+  ],
+  "author": "",
+  "license": "MIT"
+}
