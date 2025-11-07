@@ -203,6 +203,10 @@ function LeadForm() {
       <div className="lead-form-container">
         <div className="form-header">
           <h2 className="form-title">Get Connected with a Top Agent</h2>
+          <div className="ai-badge">
+            <span className="ai-icon">🤖</span>
+            <p className="ai-text">Our AI will analyze your answers to match you with the best local agent.</p>
+          </div>
           <div className="progress-bar">
             <div 
               className="progress-fill" 

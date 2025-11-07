@@ -51,7 +51,7 @@ function LandingPage() {
               Find the Right Realtor for You
             </h1>
             <p className="hero-subtitle">
-              Answer a few quick questions and we'll connect you with an agent who genuinely wants to work with you.
+              Answer a few quick questions and we'll connect you with an experienced local agent.
             </p>
             <button 
               className="cta-button"
@@ -60,6 +60,53 @@ function LandingPage() {
               Get Started
               <span className="cta-arrow">→</span>
             </button>
+          </div>
+        </div>
+      </section>
+
+      {/* How Our AI Works Section - NEW */}
+      <section className="ai-explainer-section">
+        <div className="container">
+          <h2 className="section-title ai-title">How Our Smart Matching System Works</h2>
+          <p className="ai-intro">
+            Our AI analyzes key factors — from your location and timeline to agent performance and response speed — 
+            to match you with the best available realtor. Each client submission is carefully scored from <strong>1 to 10</strong>, 
+            ensuring agents respond only to verified, serious inquiries. This means <em>faster responses</em>, 
+            <em>better communication</em>, and <em>a smoother experience</em>.
+          </p>
+          
+          <div className="ai-steps-grid">
+            <div className="ai-step-card">
+              <div className="ai-step-icon">🔍</div>
+              <h3 className="ai-step-title">1. Analyze</h3>
+              <p className="ai-step-description">
+                Our AI evaluates your needs, location, timeline, and preferences to create a comprehensive profile.
+              </p>
+            </div>
+            
+            <div className="ai-step-card">
+              <div className="ai-step-icon">🎯</div>
+              <h3 className="ai-step-title">2. Match</h3>
+              <p className="ai-step-description">
+                We score your inquiry (1-10) and instantly connect you with agents who specialize in your specific needs.
+              </p>
+            </div>
+            
+            <div className="ai-step-card">
+              <div className="ai-step-icon">⚡</div>
+              <h3 className="ai-step-title">3. Connect</h3>
+              <p className="ai-step-description">
+                Top-rated local agents receive your information and respond within minutes—not days.
+              </p>
+            </div>
+          </div>
+
+          <div className="ai-trust-badge">
+            <span className="trust-icon">🤖</span>
+            <p className="trust-text">
+              <strong>AI-Powered Quality Control:</strong> Only serious, qualified leads are shared with agents, 
+              ensuring you get the attention and service you deserve.
+            </p>
           </div>
         </div>
       </section>

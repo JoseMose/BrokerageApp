@@ -185,10 +185,116 @@
   background: white;
 }
 
+/* AI Explainer Section - NEW */
+.ai-explainer-section {
+  padding: 80px 20px;
+  background: white;
+  text-align: center;
+}
+
+.ai-title {
+  margin-bottom: 24px;
+  color: #1f2937;
+}
+
+.ai-intro {
+  max-width: 900px;
+  margin: 0 auto 60px;
+  font-size: 18px;
+  line-height: 1.8;
+  color: #4b5563;
+}
+
+.ai-intro strong {
+  color: #667eea;
+  font-weight: 700;
+}
+
+.ai-intro em {
+  font-style: italic;
+  color: #1f2937;
+}
+
+.ai-steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 40px;
+  margin-bottom: 60px;
+}
+
+.ai-step-card {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  padding: 40px 30px;
+  border-radius: 16px;
+  text-align: center;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+}
+
+.ai-step-card:hover {
+  transform: translateY(-8px);
+  border-color: #667eea;
+  box-shadow: 0 16px 32px rgba(102, 126, 234, 0.2);
+}
+
+.ai-step-icon {
+  font-size: 56px;
+  margin-bottom: 20px;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+}
+
+.ai-step-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: #1f2937;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.ai-step-description {
+  font-size: 16px;
+  color: #6b7280;
+  line-height: 1.6;
+}
+
+.ai-trust-badge {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 32px 40px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  max-width: 800px;
+  margin: 0 auto;
+  box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
+}
+
+.trust-icon {
+  font-size: 48px;
+  flex-shrink: 0;
+}
+
+.trust-text {
+  text-align: left;
+  font-size: 16px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.trust-text strong {
+  display: block;
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+
 /* Realtor Commitment Section */
 .realtor-commitment-section {
   padding: 60px 20px;
-  background: white;
+  background: #f9fafb;
   text-align: center;
 }
 
@@ -389,6 +495,46 @@
   .form-section,
   .fair-system-section {
     padding: 60px 20px;
+  }
+
+  .ai-explainer-section {
+    padding: 60px 20px;
+  }
+
+  .ai-intro {
+    font-size: 16px;
+  }
+
+  .ai-steps-grid {
+    grid-template-columns: 1fr;
+    gap: 30px;
+  }
+
+  .ai-step-icon {
+    font-size: 48px;
+  }
+
+  .ai-step-title {
+    font-size: 20px;
+  }
+
+  .ai-trust-badge {
+    flex-direction: column;
+    text-align: center;
+    padding: 24px 20px;
+  }
+
+  .trust-icon {
+    font-size: 40px;
+  }
+
+  .trust-text {
+    text-align: center;
+    font-size: 15px;
+  }
+
+  .trust-text strong {
+    font-size: 16px;
   }
 
   .commitment-badge {
