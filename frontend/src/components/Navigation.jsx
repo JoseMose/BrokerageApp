@@ -17,12 +17,12 @@ function Navigation({ user, signOut }) {
   return (
     <nav className="navigation">
       <div className="container nav-container">
-        <Link to="/" className="nav-brand">
+        <Link to="/dashboard" className="nav-brand">
           <h2>🏠 Realtor Lead Platform</h2>
         </Link>
         
         <div className="nav-menu">
-          <Link to="/" className="nav-link">Dashboard</Link>
+          <Link to="/dashboard" className="nav-link">Dashboard</Link>
           <Link to="/marketplace" className="nav-link">Marketplace</Link>
           <Link to="/history" className="nav-link">Purchase History</Link>
           <Link to="/profile" className="nav-link">Profile</Link>

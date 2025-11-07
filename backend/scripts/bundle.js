@@ -9,7 +9,14 @@ const handlers = [
   'marketplace',
   'payment',
   'agent-management',
-  'admin'
+  'admin',
+  // Lead locking system handlers
+  'lock-lead',
+  'unlock-lead',
+  'claim-lead',
+  'cleanup-expired-locks',
+  // Public lead generation
+  'create-lead'
 ];
 
 const distDir = path.join(__dirname, '..', 'dist');
@@ -24,7 +31,19 @@ async function bundleHandler(handler) {
   const handlerDir = path.join(distDir, handler);
   fs.mkdirSync(handlerDir, { recursive: true });
   
-  const entryFile = path.join(__dirname, '..', 'src', 'handlers', `${handler}.ts`);
+  // Check for both .ts and .js files
+  const tsFile = path.join(__dirname, '..', 'src', 'handlers', `${handler}.ts`);
+  const jsFile = path.join(__dirname, '..', 'src', 'handlers', `${handler}.js`);
+  
+  let entryFile;
+  if (fs.existsSync(tsFile)) {
+    entryFile = tsFile;
+  } else if (fs.existsSync(jsFile)) {
+    entryFile = jsFile;
+  } else {
+    throw new Error(`Handler file not found: ${handler}.ts or ${handler}.js`);
+  }
+  
   const outFile = path.join(handlerDir, 'index.js');
   
   try {

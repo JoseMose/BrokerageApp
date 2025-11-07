@@ -13,10 +13,18 @@ import * as actions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as location from 'aws-cdk-lib/aws-location';
 import * as stepfunctions from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
+import * as appsync from 'aws-cdk-lib/aws-appsync';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as targets from 'aws-cdk-lib/aws-events-targets';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as path from 'path';
 
 export class RealtorLeadPlatformStack extends cdk.Stack {
+  public readonly api: apigateway.RestApi;
+  public readonly leadsTable: dynamodb.Table;
+  public readonly userPool: cognito.UserPool;
+  public readonly authorizer: apigateway.CognitoUserPoolsAuthorizer;
+
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
@@ -534,6 +542,164 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
     );
 
     // ============================================
+    // APPSYNC GRAPHQL API FOR REAL-TIME UPDATES
+    // ============================================
+
+    const appsyncApi = new appsync.GraphqlApi(this, 'LeadLockingAPI', {
+      name: 'realtor-lead-locking-api',
+      definition: appsync.Definition.fromFile(
+        path.join(__dirname, '../../graphql/schema.graphql')
+      ),
+      authorizationConfig: {
+        defaultAuthorization: {
+          authorizationType: appsync.AuthorizationType.USER_POOL,
+          userPoolConfig: {
+            userPool: userPool,
+          },
+        },
+        additionalAuthorizationModes: [
+          {
+            authorizationType: appsync.AuthorizationType.IAM,
+          },
+        ],
+      },
+      xrayEnabled: true,
+    });
+
+    // ============================================
+    // LEAD LOCKING LAMBDA FUNCTIONS
+    // ============================================
+
+    // Lock Lead Lambda
+    const lockLeadLambda = new lambda.Function(this, 'LockLeadFunction', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      handler: 'index.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/dist/lock-lead')),
+      environment: {
+        LEADS_TABLE_NAME: leadsTable.tableName,
+        APPSYNC_API_ID: appsyncApi.apiId,
+        APPSYNC_ENDPOINT: appsyncApi.graphqlUrl,
+      },
+      timeout: cdk.Duration.seconds(15),
+    });
+
+    leadsTable.grantReadWriteData(lockLeadLambda);
+    appsyncApi.grant(lockLeadLambda, appsync.IamResource.all(), 'appsync:GraphQL');
+
+    // Unlock Lead Lambda
+    const unlockLeadLambda = new lambda.Function(this, 'UnlockLeadFunction', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      handler: 'index.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/dist/unlock-lead')),
+      environment: {
+        LEADS_TABLE_NAME: leadsTable.tableName,
+        APPSYNC_API_ID: appsyncApi.apiId,
+        APPSYNC_ENDPOINT: appsyncApi.graphqlUrl,
+      },
+      timeout: cdk.Duration.seconds(15),
+    });
+
+    leadsTable.grantReadWriteData(unlockLeadLambda);
+    appsyncApi.grant(unlockLeadLambda, appsync.IamResource.all(), 'appsync:GraphQL');
+
+    // Claim Lead Lambda
+    const claimLeadLambda = new lambda.Function(this, 'ClaimLeadFunction', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      handler: 'index.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/dist/claim-lead')),
+      environment: {
+        LEADS_TABLE_NAME: leadsTable.tableName,
+        APPSYNC_API_ID: appsyncApi.apiId,
+        APPSYNC_ENDPOINT: appsyncApi.graphqlUrl,
+      },
+      timeout: cdk.Duration.seconds(15),
+    });
+
+    leadsTable.grantReadWriteData(claimLeadLambda);
+    appsyncApi.grant(claimLeadLambda, appsync.IamResource.all(), 'appsync:GraphQL');
+
+    // Cleanup Expired Locks Lambda
+    const cleanupLambda = new lambda.Function(this, 'CleanupExpiredLocksFunction', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      handler: 'index.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/dist/cleanup-expired-locks')),
+      environment: {
+        LEADS_TABLE_NAME: leadsTable.tableName,
+        APPSYNC_API_ID: appsyncApi.apiId,
+        APPSYNC_ENDPOINT: appsyncApi.graphqlUrl,
+      },
+      timeout: cdk.Duration.seconds(60),
+    });
+
+    leadsTable.grantReadWriteData(cleanupLambda);
+    appsyncApi.grant(cleanupLambda, appsync.IamResource.all(), 'appsync:GraphQL');
+
+    // EventBridge rule to run cleanup every minute
+    const cleanupRule = new events.Rule(this, 'CleanupExpiredLocksRule', {
+      schedule: events.Schedule.rate(cdk.Duration.minutes(1)),
+      description: 'Clean up expired lead locks every minute',
+    });
+    cleanupRule.addTarget(new targets.LambdaFunction(cleanupLambda));
+
+    // Public Lead Creation Lambda (no auth)
+    const createLeadLambda = new lambda.Function(this, 'CreateLeadFunction', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      handler: 'index.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/dist/create-lead')),
+      environment: {
+        LEADS_TABLE_NAME: leadsTable.tableName,
+        APPSYNC_API_ID: appsyncApi.apiId,
+        APPSYNC_ENDPOINT: appsyncApi.graphqlUrl,
+        PLACE_INDEX_NAME: placeIndex.indexName,
+      },
+      timeout: cdk.Duration.seconds(30),
+    });
+
+    leadsTable.grantWriteData(createLeadLambda);
+    appsyncApi.grant(createLeadLambda, appsync.IamResource.all(), 'appsync:GraphQL');
+
+    // Grant Location Service permissions for geocoding
+    createLeadLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['geo:SearchPlaceIndexForText'],
+      resources: [placeIndex.attrArn],
+    }));
+
+    // Grant Bedrock permissions for AI scoring
+    createLeadLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['bedrock:InvokeModel'],
+      resources: ['*'],
+    }));
+
+    // ============================================
+    // API GATEWAY ENDPOINTS FOR LEAD LOCKING
+    // ============================================
+
+    // Add /leads/lock endpoint
+    const lockResource = leadsResource.addResource('lock');
+    lockResource.addMethod('POST', new apigateway.LambdaIntegration(lockLeadLambda), {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    // Add /leads/unlock endpoint
+    const unlockResource = leadsResource.addResource('unlock');
+    unlockResource.addMethod('POST', new apigateway.LambdaIntegration(unlockLeadLambda), {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    // Add /leads/claim endpoint
+    const claimResource = leadsResource.addResource('claim');
+    claimResource.addMethod('POST', new apigateway.LambdaIntegration(claimLeadLambda), {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    // Add public /create-lead endpoint (NO AUTH)
+    const createLeadResource = api.root.addResource('create-lead');
+    createLeadResource.addMethod('POST', new apigateway.LambdaIntegration(createLeadLambda));
+
+    // ============================================
     // CLOUDWATCH ALARMS
     // ============================================
 
@@ -598,5 +764,34 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       description: 'Lead processing Step Function ARN',
       exportName: 'RealtorLeadWorkflowArn',
     });
+
+    new cdk.CfnOutput(this, 'AppSyncGraphQLEndpoint', {
+      value: appsyncApi.graphqlUrl,
+      description: 'AppSync GraphQL API endpoint for real-time subscriptions',
+      exportName: 'AppSyncGraphQLEndpoint',
+    });
+
+    new cdk.CfnOutput(this, 'AppSyncAPIKey', {
+      value: appsyncApi.apiId,
+      description: 'AppSync API ID',
+      exportName: 'AppSyncAPIId',
+    });
+
+    new cdk.CfnOutput(this, 'PublicLeadFormEndpoint', {
+      value: `${api.url}create-lead`,
+      description: 'PUBLIC endpoint for lead generation form (no auth required)',
+      exportName: 'PublicLeadFormEndpoint',
+    });
+
+    new cdk.CfnOutput(this, 'EnableTTLCommand', {
+      value: `aws dynamodb update-time-to-live --table-name ${leadsTable.tableName} --time-to-live-specification "Enabled=true, AttributeName=lockExpiresAt"`,
+      description: 'Run this command to enable TTL on the Leads table',
+    });
+
+    // Export resources for use by other stacks
+    this.api = api;
+    this.leadsTable = leadsTable;
+    this.userPool = userPool;
+    this.authorizer = authorizer;
   }
 }

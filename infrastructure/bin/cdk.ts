@@ -3,14 +3,18 @@ import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
 import { RealtorLeadPlatformStack } from '../lib/realtor-lead-platform-stack';
 
+// Import JavaScript stack using require
+const { LeadLockingStack } = require('../lib/lead-locking-stack');
+
 const app = new cdk.App();
 
+// Main platform stack (includes lead locking and public lead generation)
 new RealtorLeadPlatformStack(app, 'RealtorLeadPlatformStack', {
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: process.env.CDK_DEFAULT_REGION || 'us-east-1',
   },
-  description: 'AI-Powered Real Estate Lead Scoring and Distribution Platform',
+  description: 'AI-Powered Real Estate Lead Scoring and Distribution Platform with Lead Locking',
 });
 
 app.synth();

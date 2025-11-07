@@ -1,0 +1,423 @@
+/* Landing Page Styles */
+
+.landing-page {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* Navigation */
+.landing-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  padding: 1rem 0;
+}
+
+.nav-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.nav-logo h2 {
+  font-size: 1.5rem;
+  color: #1f2937;
+  margin: 0;
+}
+
+.realtor-login-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 12px 28px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.realtor-login-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+/* Hero Section */
+.hero-section {
+  position: relative;
+  height: 600px;
+  margin-top: 70px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background-image: 
+    linear-gradient(135deg, rgba(102, 126, 234, 0.9) 0%, rgba(118, 75, 162, 0.9) 100%),
+    url('https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1920');
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.hero-overlay {
+  width: 100%;
+  max-width: 1200px;
+  padding: 0 20px;
+}
+
+.hero-content {
+  text-align: center;
+  animation: fadeInUp 1s ease-out;
+}
+
+.hero-title {
+  font-size: 56px;
+  font-weight: 800;
+  margin-bottom: 20px;
+  line-height: 1.2;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.hero-subtitle {
+  font-size: 24px;
+  font-weight: 300;
+  margin-bottom: 40px;
+  opacity: 0.95;
+  max-width: 700px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.cta-button {
+  background: white;
+  color: #667eea;
+  border: none;
+  padding: 18px 48px;
+  font-size: 20px;
+  font-weight: 700;
+  border-radius: 50px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cta-button:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+}
+
+.cta-arrow {
+  font-size: 24px;
+  transition: transform 0.3s ease;
+}
+
+.cta-button:hover .cta-arrow {
+  transform: translateX(5px);
+}
+
+/* Features Section */
+.features-section {
+  padding: 80px 20px;
+  background: #f9fafb;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.section-title {
+  text-align: center;
+  font-size: 42px;
+  font-weight: 700;
+  margin-bottom: 60px;
+  color: #1f2937;
+}
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 40px;
+}
+
+.feature-card {
+  background: white;
+  padding: 40px 30px;
+  border-radius: 16px;
+  text-align: center;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+}
+
+.feature-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
+}
+
+.feature-icon {
+  font-size: 48px;
+  margin-bottom: 20px;
+}
+
+.feature-card h3 {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: #1f2937;
+}
+
+.feature-card p {
+  font-size: 16px;
+  color: #6b7280;
+  line-height: 1.6;
+}
+
+/* Form Section */
+.form-section {
+  padding: 80px 20px;
+  background: white;
+}
+
+/* Realtor Commitment Section */
+.realtor-commitment-section {
+  padding: 60px 20px;
+  background: white;
+  text-align: center;
+}
+
+.commitment-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 16px 32px;
+  border-radius: 50px;
+  margin-bottom: 24px;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.badge-icon {
+  font-size: 32px;
+}
+
+.commitment-text {
+  max-width: 800px;
+  margin: 0 auto;
+  font-size: 18px;
+  line-height: 1.8;
+  color: #4b5563;
+}
+
+/* Fair System Section */
+.fair-system-section {
+  padding: 80px 20px;
+  background: linear-gradient(135deg, #f0f4ff 0%, #e5e7ff 100%);
+}
+
+.fair-system-content {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 60px;
+  align-items: center;
+  margin-top: 40px;
+}
+
+.fair-system-text .lead-text {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 30px;
+}
+
+.fair-system-list {
+  list-style: none;
+  padding: 0;
+  margin-bottom: 30px;
+}
+
+.fair-system-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 20px;
+  font-size: 16px;
+  color: #4b5563;
+  line-height: 1.6;
+}
+
+.check-icon {
+  color: #10b981;
+  font-size: 24px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.fair-system-list strong {
+  color: #1f2937;
+}
+
+.highlight-text {
+  background: white;
+  padding: 24px;
+  border-radius: 12px;
+  border-left: 4px solid #667eea;
+  font-size: 18px;
+  font-weight: 600;
+  color: #667eea;
+  line-height: 1.6;
+}
+
+.fair-system-visual {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  padding: 60px 40px;
+  border-radius: 20px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+}
+
+.fair-icon {
+  font-size: 120px;
+  margin-bottom: 20px;
+}
+
+.fair-caption {
+  font-size: 18px;
+  font-weight: 700;
+  color: #667eea;
+  text-align: center;
+}
+
+/* Trust Section */
+.trust-section {
+  padding: 40px 20px;
+  background: #f3f4f6;
+  border-top: 1px solid #e5e7eb;
+}
+
+.trust-text {
+  text-align: center;
+  color: #6b7280;
+  font-size: 14px;
+  margin: 0;
+}
+
+/* Footer */
+.landing-footer {
+  background: #1f2937;
+  color: #9ca3af;
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.landing-footer p {
+  margin: 8px 0;
+}
+
+.landing-footer a {
+  color: #667eea;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.2s;
+}
+
+.landing-footer a:hover {
+  color: #764ba2;
+}
+
+/* Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .nav-logo h2 {
+    font-size: 1.2rem;
+  }
+
+  .realtor-login-btn {
+    padding: 10px 20px;
+    font-size: 14px;
+  }
+
+  .hero-section {
+    height: 500px;
+  }
+
+  .hero-title {
+    font-size: 36px;
+  }
+
+  .hero-subtitle {
+    font-size: 18px;
+  }
+
+  .cta-button {
+    padding: 16px 36px;
+    font-size: 18px;
+  }
+
+  .section-title {
+    font-size: 32px;
+  }
+
+  .features-grid {
+    grid-template-columns: 1fr;
+    gap: 30px;
+  }
+
+  .features-section,
+  .form-section,
+  .fair-system-section {
+    padding: 60px 20px;
+  }
+
+  .commitment-badge {
+    font-size: 18px;
+    padding: 12px 24px;
+  }
+
+  .badge-icon {
+    font-size: 24px;
+  }
+
+  .commitment-text {
+    font-size: 16px;
+  }
+
+  .fair-system-content {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+
+  .fair-system-text .lead-text {
+    font-size: 18px;
+  }
+
+  .fair-icon {
+    font-size: 80px;
+  }
+
+  .fair-system-visual {
+    padding: 40px 30px;
+  }
+}

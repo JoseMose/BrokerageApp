@@ -1,0 +1,214 @@
+# AppSync GraphQL Schema for Lead Locking System
+
+# ============================================
+# TYPES
+# ============================================
+
+type Lead {
+  leadId: ID!
+  leadType: LeadType!
+  score: Int!
+  price: Float!
+  status: LeadStatus!
+  
+  # Locking attributes
+  lockedBy: String
+  lockedAt: AWSDateTime
+  lockExpiresAt: AWSTimestamp
+  lockVersion: Int
+  
+  # Claiming attributes
+  claimedBy: String
+  claimedAt: AWSDateTime
+  transactionId: String
+  
+  # Lead details
+  aiReason: String
+  contact: Contact
+  location: Location
+  responses: AWSJSON
+  createdAt: AWSDateTime!
+  
+  # GSI attributes
+  statusType: String
+  scorePrice: String
+}
+
+type Contact {
+  name: String!
+  email: String!
+  phone: String!
+}
+
+type Location {
+  address: String!
+  city: String!
+  state: String!
+  zipCode: String!
+  coordinates: Coordinates
+}
+
+type Coordinates {
+  lat: Float!
+  lng: Float!
+}
+
+enum LeadType {
+  BUYER
+  SELLER
+}
+
+enum LeadStatus {
+  AVAILABLE
+  LOCKED
+  CLAIMED
+  EXPIRED
+}
+
+# ============================================
+# EVENTS (for subscriptions)
+# ============================================
+
+type LeadLockEvent {
+  leadId: ID!
+  status: LeadStatus!
+  lockedBy: String
+  lockedAt: AWSDateTime
+  lockExpiresAt: AWSTimestamp
+  eventType: LeadEventType!
+}
+
+enum LeadEventType {
+  LOCKED
+  UNLOCKED
+  CLAIMED
+  EXPIRED
+}
+
+# ============================================
+# MUTATIONS
+# ============================================
+
+type Mutation {
+  """
+  Attempt to lock a lead for 15 seconds.
+  Returns the locked lead if successful.
+  Fails if lead is already locked or claimed.
+  """
+  lockLead(leadId: ID!): Lead
+  
+  """
+  Manually unlock a lead (only by the agent who locked it).
+  Used if agent cancels the payment process.
+  """
+  unlockLead(leadId: ID!): Lead
+  
+  """
+  Claim a lead after successful payment.
+  Requires the lead to be locked by the current agent.
+  """
+  claimLead(leadId: ID!, transactionId: ID!): Lead
+  
+  """
+  Extend lock time by another 15 seconds.
+  Used if payment processing takes longer.
+  """
+  extendLock(leadId: ID!): Lead
+  
+  """
+  NEW: Broadcast when a new lead is created from the landing page.
+  This triggers real-time notifications to all subscribed agents.
+  """
+  newLeadCreated(lead: LeadInput!): Lead
+}
+
+input LeadInput {
+  leadId: ID!
+  leadType: LeadType!
+  score: Int!
+  price: Float!
+  status: LeadStatus!
+  aiReason: String
+  createdAt: AWSDateTime!
+}
+
+# ============================================
+# QUERIES
+# ============================================
+
+type Query {
+  """
+  Get a single lead by ID
+  """
+  getLead(leadId: ID!): Lead
+  
+  """
+  List all available leads with optional filters
+  """
+  listAvailableLeads(
+    leadType: LeadType
+    minScore: Int
+    maxPrice: Float
+    limit: Int
+    nextToken: String
+  ): LeadConnection
+  
+  """
+  Get all leads locked by the current agent
+  """
+  getMyLockedLeads: [Lead!]!
+  
+  """
+  Get all leads claimed by the current agent
+  """
+  getMyClaimedLeads(limit: Int, nextToken: String): LeadConnection
+}
+
+type LeadConnection {
+  items: [Lead!]!
+  nextToken: String
+}
+
+# ============================================
+# SUBSCRIPTIONS
+# ============================================
+
+type Subscription {
+  """
+  Subscribe to all lead status changes (locked, unlocked, claimed).
+  All agents receive this event for real-time UI updates.
+  """
+  onLeadStatusChanged: Lead
+    @aws_subscribe(mutations: ["lockLead", "unlockLead", "claimLead"])
+  
+  """
+  Subscribe to lock events for a specific lead.
+  Useful for lead detail pages.
+  """
+  onLeadLockStatusChanged(leadId: ID!): Lead
+    @aws_subscribe(mutations: ["lockLead", "unlockLead", "claimLead"])
+  
+  """
+  Subscribe to all events for the current agent's locked leads.
+  Useful for "My Locked Leads" page.
+  """
+  onMyLeadStatusChanged: Lead
+    @aws_subscribe(mutations: ["lockLead", "unlockLead", "claimLead"])
+  
+  """
+  NEW: Subscribe to new leads being created.
+  All agents receive instant notifications when leads are submitted from the landing page.
+  """
+  onNewLeadCreated: Lead
+    @aws_subscribe(mutations: ["newLeadCreated"])
+}
+
+# ============================================
+# SCHEMA
+# ============================================
+
+schema {
+  query: Query
+  mutation: Mutation
+  subscription: Subscription
+}

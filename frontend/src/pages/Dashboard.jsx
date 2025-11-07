@@ -56,40 +56,52 @@ function Dashboard() {
 
   return (
     <div className="container dashboard">
-      <h1>Dashboard</h1>
+      <div className="dashboard-header">
+        <div>
+          <h1>Welcome back, {profile?.name?.split(' ')[0] || 'Agent'}! 👋</h1>
+          <p className="dashboard-subtitle">Here's what's happening with your leads today</p>
+        </div>
+        <a href="/marketplace" className="btn btn-primary">
+          Browse New Leads
+        </a>
+      </div>
 
       <div className="stats-grid">
-        <div className="stat-card">
+        <div className="stat-card stat-card-primary">
           <div className="stat-icon">📊</div>
           <div className="stat-content">
             <div className="stat-value">{stats?.totalPurchased || 0}</div>
             <div className="stat-label">Leads Purchased</div>
+            <div className="stat-trend">This month</div>
           </div>
         </div>
 
-        <div className="stat-card">
+        <div className="stat-card stat-card-success">
           <div className="stat-icon">💰</div>
           <div className="stat-content">
             <div className="stat-value">{formatCurrency(stats?.totalSpent || 0)}</div>
-            <div className="stat-label">Total Spent</div>
+            <div className="stat-label">Total Invested</div>
+            <div className="stat-trend">Lifetime</div>
           </div>
         </div>
 
-        <div className="stat-card">
+        <div className="stat-card stat-card-info">
           <div className="stat-icon">🎯</div>
           <div className="stat-content">
             <div className="stat-value">
               {((stats?.conversionRate || 0) * 100).toFixed(1)}%
             </div>
             <div className="stat-label">Conversion Rate</div>
+            <div className="stat-trend">Lead to client</div>
           </div>
         </div>
 
-        <div className="stat-card">
+        <div className="stat-card stat-card-warning">
           <div className="stat-icon">📍</div>
           <div className="stat-content">
             <div className="stat-value">{profile?.radius || 15} mi</div>
             <div className="stat-label">Service Radius</div>
+            <div className="stat-trend">Active coverage</div>
           </div>
         </div>
       </div>

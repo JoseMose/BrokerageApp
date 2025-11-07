@@ -50,6 +50,57 @@ export const leadAPI = {
   submitLead: (data) => apiClient.post('/leads', data),
 };
 
+// Public Lead Generation API (no auth required)
+export const submitLead = async (formData) => {
+  try {
+    // Create public axios instance without auth interceptor
+    const publicClient = axios.create({
+      baseURL: API_ENDPOINT,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    const response = await publicClient.post('/create-lead', {
+      leadType: formData.leadType,
+      contact: {
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone.replace(/\D/g, ''), // Remove formatting
+      },
+      location: {
+        address: formData.address,
+        city: formData.city,
+        state: formData.state,
+        zipCode: formData.zipCode,
+      },
+      responses: {
+        // Buyer-specific
+        buyingTimeline: formData.buyingTimeline || null,
+        preApproved: formData.preApproved,
+        priceRange: formData.priceRange || null,
+        
+        // Seller-specific
+        sellingTimeline: formData.sellingTimeline || null,
+        hasListedBefore: formData.hasListedBefore,
+        estimatedValue: formData.estimatedValue || null,
+        propertyType: formData.propertyType || null,
+      }
+    });
+    
+    return {
+      success: true,
+      data: response.data
+    };
+  } catch (error) {
+    console.error('Lead submission error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.message || 'Failed to submit lead. Please try again.'
+    };
+  }
+};
+
 // Admin APIs
 export const adminAPI = {
   getDashboard: () => apiClient.get('/admin', { params: { action: 'dashboard' } }),

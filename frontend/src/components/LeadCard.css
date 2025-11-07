@@ -1,0 +1,254 @@
+/* LeadCard Styles with Lock Status Indicators */
+
+.lead-card {
+  background: white;
+  border-radius: 12px;
+  padding: 0;
+  margin: 20px 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.lead-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+/* Status-based styling */
+.lead-card-available {
+  border: 2px solid #00c853;
+}
+
+.lead-card-locked {
+  border: 2px solid #ffc107;
+  opacity: 0.95;
+}
+
+.lead-card-claimed {
+  border: 2px solid #9e9e9e;
+  opacity: 0.7;
+}
+
+/* Lock Status Banner */
+.lock-banner {
+  padding: 12px 20px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.lock-icon {
+  font-size: 18px;
+}
+
+.lock-mine {
+  background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
+  color: white;
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.lock-other {
+  background: #e0e0e0;
+  color: #616161;
+}
+
+.claimed {
+  background: #4caf50;
+  color: white;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 20px 5px rgba(255, 193, 7, 0.3);
+  }
+}
+
+/* Lead Content */
+.lead-content {
+  padding: 20px;
+}
+
+.lead-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.lead-type {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.lead-score {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.score-number {
+  font-size: 32px;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.score-label {
+  font-size: 16px;
+  opacity: 0.7;
+}
+
+.lead-price {
+  font-size: 28px;
+  font-weight: bold;
+  color: #1976d2;
+  margin-bottom: 15px;
+}
+
+.lead-reason {
+  font-size: 14px;
+  color: #666;
+  line-height: 1.6;
+  margin-bottom: 15px;
+  min-height: 40px;
+}
+
+.lead-location {
+  font-size: 13px;
+  color: #888;
+  margin-bottom: 10px;
+}
+
+.lead-error {
+  background: #ffebee;
+  color: #c62828;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-top: 10px;
+}
+
+/* Action Buttons */
+.lead-actions {
+  padding: 0 20px 20px 20px;
+}
+
+.lead-actions button {
+  width: 100%;
+  padding: 14px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 8px;
+}
+
+.lead-actions button:last-child {
+  margin-bottom: 0;
+}
+
+.btn-lock {
+  background: linear-gradient(135deg, #00c853 0%, #00e676 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(0, 200, 83, 0.3);
+}
+
+.btn-lock:hover:not(:disabled) {
+  background: linear-gradient(135deg, #00e676 0%, #00c853 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 200, 83, 0.4);
+}
+
+.btn-lock:disabled {
+  background: #bdbdbd;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.btn-payment {
+  background: linear-gradient(135deg, #1976d2 0%, #2196f3 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(25, 118, 210, 0.3);
+}
+
+.btn-payment:hover {
+  background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(25, 118, 210, 0.4);
+}
+
+.btn-unlock {
+  background: white;
+  color: #f44336;
+  border: 2px solid #f44336;
+  box-shadow: none;
+}
+
+.btn-unlock:hover {
+  background: #ffebee;
+}
+
+.btn-locked {
+  background: #e0e0e0;
+  color: #616161;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn-claimed {
+  background: #e8f5e9;
+  color: #4caf50;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.locked-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .lead-card {
+    margin: 15px 0;
+  }
+  
+  .lead-price {
+    font-size: 24px;
+  }
+  
+  .score-number {
+    font-size: 28px;
+  }
+  
+  .lock-banner {
+    font-size: 13px;
+    padding: 10px 15px;
+  }
+}
+
+/* Animation for newly locked leads */
+@keyframes lock-highlight {
+  0% {
+    background: #fff3cd;
+  }
+  100% {
+    background: white;
+  }
+}
+
+.lead-card.just-locked .lead-content {
+  animation: lock-highlight 1s ease-out;
+}

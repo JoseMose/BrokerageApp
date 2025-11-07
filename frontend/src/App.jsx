@@ -12,21 +12,24 @@ import LeadDetails from './pages/LeadDetails';
 import Profile from './pages/Profile';
 import PurchaseHistory from './pages/PurchaseHistory';
 import AdminDashboard from './pages/AdminDashboard';
+import LandingPage from './pages/LandingPage';
+import RealtorAuth from './pages/RealtorAuth';
 
-function App() {
-  const [user, setUser] = useState(null);
+// Protected Route wrapper
+function ProtectedRoute({ children }) {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    checkUser();
+    checkAuth();
   }, []);
 
-  const checkUser = async () => {
+  const checkAuth = async () => {
     try {
-      const currentUser = await getCurrentUser();
-      setUser(currentUser);
+      await getCurrentUser();
+      setIsAuthenticated(true);
     } catch (error) {
-      setUser(null);
+      setIsAuthenticated(false);
     } finally {
       setLoading(false);
     }
@@ -40,48 +43,124 @@ function App() {
     );
   }
 
+  return isAuthenticated ? children : <Navigate to="/realtor-login" replace />;
+}
+
+function App() {
   return (
-    <Authenticator
-      socialProviders={[]}
-      variation="default"
-      formFields={{
-        signUp: {
-          email: {
-            order: 1,
-            isRequired: true,
-          },
-          password: {
-            order: 2,
-            isRequired: true,
-          },
-          'custom:role': {
-            order: 3,
-            label: 'Role',
-            placeholder: 'agent',
-            isRequired: true,
-          },
-        },
-      }}
-    >
-      {({ signOut, user }) => (
-        <Router>
-          <div className="app">
-            <Navigation user={user} signOut={signOut} />
-            <main className="main-content">
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/marketplace" element={<Marketplace />} />
-                <Route path="/leads/:leadId" element={<LeadDetails />} />
-                <Route path="/profile" element={<Profile />} />
-                <Route path="/history" element={<PurchaseHistory />} />
-                <Route path="/admin" element={<AdminDashboard />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </main>
-          </div>
-        </Router>
-      )}
-    </Authenticator>
+    <Router>
+      <Routes>
+        {/* Public Routes */}
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/realtor-login" element={<RealtorAuth />} />
+
+        {/* Protected Routes */}
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Authenticator>
+                {({ signOut, user }) => (
+                  <div className="app">
+                    <Navigation user={user} signOut={signOut} />
+                    <main className="main-content">
+                      <Dashboard />
+                    </main>
+                  </div>
+                )}
+              </Authenticator>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/marketplace"
+          element={
+            <ProtectedRoute>
+              <Authenticator>
+                {({ signOut, user }) => (
+                  <div className="app">
+                    <Navigation user={user} signOut={signOut} />
+                    <main className="main-content">
+                      <Marketplace />
+                    </main>
+                  </div>
+                )}
+              </Authenticator>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/leads/:leadId"
+          element={
+            <ProtectedRoute>
+              <Authenticator>
+                {({ signOut, user }) => (
+                  <div className="app">
+                    <Navigation user={user} signOut={signOut} />
+                    <main className="main-content">
+                      <LeadDetails />
+                    </main>
+                  </div>
+                )}
+              </Authenticator>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <Authenticator>
+                {({ signOut, user }) => (
+                  <div className="app">
+                    <Navigation user={user} signOut={signOut} />
+                    <main className="main-content">
+                      <Profile />
+                    </main>
+                  </div>
+                )}
+              </Authenticator>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/history"
+          element={
+            <ProtectedRoute>
+              <Authenticator>
+                {({ signOut, user }) => (
+                  <div className="app">
+                    <Navigation user={user} signOut={signOut} />
+                    <main className="main-content">
+                      <PurchaseHistory />
+                    </main>
+                  </div>
+                )}
+              </Authenticator>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute>
+              <Authenticator>
+                {({ signOut, user }) => (
+                  <div className="app">
+                    <Navigation user={user} signOut={signOut} />
+                    <main className="main-content">
+                      <AdminDashboard />
+                    </main>
+                  </div>
+                )}
+              </Authenticator>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Router>
   );
 }
 
