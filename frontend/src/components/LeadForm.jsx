@@ -64,6 +64,13 @@ function LeadForm() {
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: null }));
     }
+
+    // Auto-advance from Step 1 when leadType is selected
+    if (currentStep === 1 && name === 'leadType') {
+      setTimeout(() => {
+        setCurrentStep(2);
+      }, 300);
+    }
   };
 
   const handleRealtorCheck = (hasRealtor) => {
@@ -105,6 +112,8 @@ function LeadForm() {
   const validateCurrentStep = () => {
     const newErrors = {};
     
+    console.log('Validating step:', currentStep, 'formData:', formData);
+    
     if (currentStep === 1 && !formData.leadType) {
       newErrors.leadType = 'Please select whether you are buying or selling';
     }
@@ -141,6 +150,7 @@ function LeadForm() {
       }
     }
     
+    console.log('Validation errors:', newErrors);
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -167,10 +177,15 @@ function LeadForm() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    console.log('Submit button clicked, current step:', currentStep);
+    console.log('Form data:', formData);
+    
     if (!validateCurrentStep()) {
+      console.log('Validation failed, errors:', errors);
       return;
     }
     
+    console.log('Validation passed, submitting...');
     setLoading(true);
     setErrors({});
     
@@ -570,7 +585,7 @@ function LeadForm() {
               </button>
             )}
             
-            {currentStep < 5 ? (
+            {currentStep > 1 && currentStep < 5 ? (
               <button
                 type="button"
                 onClick={handleNext}
@@ -579,7 +594,7 @@ function LeadForm() {
               >
                 Next →
               </button>
-            ) : (
+            ) : currentStep === 5 ? (
               <button
                 type="submit"
                 className="btn-submit"
@@ -587,7 +602,7 @@ function LeadForm() {
               >
                 {loading ? 'Submitting...' : 'Submit'}
               </button>
-            )}
+            ) : null}
           </div>
         </form>
       </div>

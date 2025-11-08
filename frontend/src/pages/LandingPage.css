@@ -278,17 +278,19 @@
   flex-shrink: 0;
 }
 
-.trust-text {
+.ai-trust-badge .trust-text {
   text-align: left;
   font-size: 16px;
   line-height: 1.6;
   margin: 0;
+  color: white;
 }
 
-.trust-text strong {
+.ai-trust-badge .trust-text strong {
   display: block;
   font-size: 18px;
   margin-bottom: 8px;
+  color: white;
 }
 
 /* Realtor Commitment Section */
