@@ -1,12 +1,168 @@
 import React, { useState, useEffect } from 'react';
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { bulkPackagesAPI, paymentAPI } from '../utils/api';
+import { stripePromise } from '../utils/stripe';
 import LoadingSpinner from '../components/LoadingSpinner';
 import './BulkLeads.css';
+
+// Stripe Payment Modal Component
+function PaymentModal({ pkg, onClose, onSuccess }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!stripe || !elements) {
+      return;
+    }
+
+    setProcessing(true);
+    setError(null);
+
+    try {
+      const cardElement = elements.getElement(CardElement);
+
+      // Create payment method
+      const { error: stripeError, paymentMethod } = await stripe.createPaymentMethod({
+        type: 'card',
+        card: cardElement,
+      });
+
+      if (stripeError) {
+        setError(stripeError.message);
+        setProcessing(false);
+        return;
+      }
+
+      // Call backend to process payment for bulk package
+      const response = await paymentAPI.purchaseLead({
+        packageId: pkg.packageId,
+        paymentMethodId: paymentMethod.id,
+        amount: pkg.totalPrice,
+        type: 'bulk_package',
+      });
+
+      if (response.data.success) {
+        onSuccess(response.data);
+      } else {
+        setError(response.data.message || 'Payment failed');
+      }
+    } catch (err) {
+      console.error('Payment error:', err);
+      setError(err.response?.data?.message || 'Payment processing failed');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(amount);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Complete Your Purchase</h2>
+          <button className="close-btn" onClick={onClose}>×</button>
+        </div>
+
+        <div className="payment-summary">
+          <h3>Bulk Package Details</h3>
+          <div className="summary-row">
+            <span>Leads:</span>
+            <strong>{pkg.leadCount} leads</strong>
+          </div>
+          <div className="summary-row">
+            <span>Price per lead:</span>
+            <span>{formatCurrency(pkg.pricePerLead)}</span>
+          </div>
+          <div className="summary-row">
+            <span>Regular price:</span>
+            <span className="strikethrough">{formatCurrency(pkg.leadCount * 80)}</span>
+          </div>
+          <div className="summary-row highlight">
+            <span>Total:</span>
+            <strong className="total-amount">{formatCurrency(pkg.totalPrice)}</strong>
+          </div>
+          <div className="summary-row savings-row">
+            <span>You save:</span>
+            <strong className="savings-amount">
+              {formatCurrency((pkg.leadCount * 80) - pkg.totalPrice)} ({pkg.discountPercent}% off)
+            </strong>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="payment-form">
+          <div className="form-group">
+            <label>Card Information</label>
+            <div className="card-element-wrapper">
+              <CardElement
+                options={{
+                  style: {
+                    base: {
+                      fontSize: '16px',
+                      color: '#424770',
+                      '::placeholder': {
+                        color: '#aab7c4',
+                      },
+                    },
+                    invalid: {
+                      color: '#9e2146',
+                    },
+                  },
+                }}
+              />
+            </div>
+          </div>
+
+          {error && (
+            <div className="alert alert-error">
+              <span className="alert-icon">⚠️</span>
+              {error}
+            </div>
+          )}
+
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={onClose}
+              disabled={processing}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={!stripe || processing}
+            >
+              {processing ? (
+                <>
+                  <span className="spinner"></span>
+                  Processing...
+                </>
+              ) : (
+                <>Pay {formatCurrency(pkg.totalPrice)}</>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
 const BulkLeads = () => {
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [purchasing, setPurchasing] = useState(null);
+  const [selectedPackage, setSelectedPackage] = useState(null);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
 
@@ -45,31 +201,25 @@ const BulkLeads = () => {
     }
   };
 
-  const handlePurchase = async (packageId) => {
-    if (!confirm('Are you sure you want to purchase this bulk package?')) {
-      return;
-    }
+  const handlePurchase = (pkg) => {
+    setSelectedPackage(pkg);
+    setError(null);
+  };
 
-    try {
-      setPurchasing(packageId);
-      setError(null);
-      setSuccessMessage(null);
+  const handlePaymentSuccess = async (data) => {
+    setSuccessMessage(`Successfully purchased ${data.package?.leadCount || 'bulk'} leads!`);
+    setSelectedPackage(null);
+    
+    // Refresh packages list
+    await fetchPackages();
+    
+    // Clear success message after 5 seconds
+    setTimeout(() => setSuccessMessage(null), 5000);
+  };
 
-      const response = await bulkPackagesAPI.purchasePackage(packageId);
-      
-      setSuccessMessage(response.data.message || 'Package purchased successfully!');
-      
-      // Refresh packages list
-      await fetchPackages();
-      
-      // Clear success message after 5 seconds
-      setTimeout(() => setSuccessMessage(null), 5000);
-    } catch (err) {
-      console.error('Error purchasing package:', err);
-      setError(err.response?.data?.message || 'Failed to purchase package');
-    } finally {
-      setPurchasing(null);
-    }
+  const handleCloseModal = () => {
+    setSelectedPackage(null);
+    setError(null);
   };
 
   const formatCurrency = (amount) => {
@@ -172,19 +322,9 @@ const BulkLeads = () => {
 
               <button
                 className="btn btn-primary purchase-btn"
-                onClick={() => handlePurchase(pkg.packageId)}
-                disabled={purchasing === pkg.packageId}
+                onClick={() => handlePurchase(pkg)}
               >
-                {purchasing === pkg.packageId ? (
-                  <>
-                    <span className="spinner"></span>
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    Purchase Package - {formatCurrency(pkg.totalPrice)}
-                  </>
-                )}
+                Purchase Package - {formatCurrency(pkg.totalPrice)}
               </button>
 
               <div className="package-info">
@@ -224,6 +364,17 @@ const BulkLeads = () => {
           </div>
         </div>
       </div>
+
+      {/* Stripe Payment Modal */}
+      {selectedPackage && (
+        <Elements stripe={stripePromise}>
+          <PaymentModal
+            pkg={selectedPackage}
+            onClose={handleCloseModal}
+            onSuccess={handlePaymentSuccess}
+          />
+        </Elements>
+      )}
     </div>
   );
 };

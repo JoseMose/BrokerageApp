@@ -43,8 +43,14 @@ export const handler = async (event: APIGatewayEvent) => {
 async function purchaseLead(event: APIGatewayEvent) {
   try {
     const agentId = RequestValidator.getUserId(event);
-    const body = RequestValidator.parseBody<PurchaseLeadRequest>(event);
+    const body = RequestValidator.parseBody<any>(event);
 
+    // Check if this is a bulk package purchase
+    if (body.type === 'bulk_package' && body.packageId) {
+      return await purchaseBulkPackage(agentId, body);
+    }
+
+    // Regular lead purchase
     RequestValidator.validateRequired({
       leadId: body.leadId,
     });
@@ -239,6 +245,160 @@ async function purchaseLead(event: APIGatewayEvent) {
       return ResponseBuilder.error(`Payment failed: ${error.message}`, 402);
     }
 
+    throw error;
+  }
+}
+
+/**
+ * Purchase a bulk package with Stripe payment
+ */
+async function purchaseBulkPackage(agentId: string, body: any) {
+  try {
+    // Get the bulk package
+    const packages = await DynamoDBService.queryItems(
+      config.LEADS_TABLE_NAME,
+      'GSI1PK = :pk',
+      {
+        ':pk': 'available#bulk-package',
+      },
+      'StatusTypeIndex'
+    );
+
+    const bulkPackage = packages.find((pkg: any) => pkg.packageId === body.packageId);
+
+    if (!bulkPackage) {
+      return ResponseBuilder.notFound('Bulk package not found');
+    }
+
+    // Check if package is still available
+    if (bulkPackage.status !== 'available') {
+      return ResponseBuilder.error('Package is no longer available', 410);
+    }
+
+    // Check if expired
+    const now = Math.floor(Date.now() / 1000);
+    if (bulkPackage.expiresAt && bulkPackage.expiresAt < now) {
+      return ResponseBuilder.error('Package has expired', 410);
+    }
+
+    // Get agent
+    const agent = await DynamoDBService.getItem(config.AGENTS_TABLE_NAME, {
+      agentId,
+      SK: 'profile',
+    });
+
+    if (!agent) {
+      return ResponseBuilder.error('Agent profile not found', 404);
+    }
+
+    // Create Stripe payment intent
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(bulkPackage.totalPrice * 100), // Convert to cents
+      currency: 'usd',
+      payment_method: body.paymentMethodId,
+      confirm: true,
+      automatic_payment_methods: {
+        enabled: true,
+        allow_redirects: 'never',
+      },
+      metadata: {
+        packageId: bulkPackage.packageId,
+        agentId,
+        type: 'bulk_package',
+        leadCount: bulkPackage.leadCount.toString(),
+      },
+    });
+
+    if (paymentIntent.status !== 'succeeded') {
+      return ResponseBuilder.error('Payment failed', 402);
+    }
+
+    // Create transaction
+    const transactionId = uuidv4();
+    const timestamp = new Date().toISOString();
+
+    const transaction: Transaction = {
+      transactionId,
+      timestamp,
+      agentId,
+      leadId: bulkPackage.packageId, // Use packageId as leadId for bulk purchases
+      amount: bulkPackage.totalPrice,
+      score: 0, // Bulk packages don't have a single score
+      stripePaymentIntentId: paymentIntent.id,
+      status: 'completed',
+      createdAt: timestamp,
+    };
+
+    await DynamoDBService.putItem(config.TRANSACTIONS_TABLE_NAME, transaction);
+
+    // Update package status
+    await DynamoDBService.updateItem(
+      config.LEADS_TABLE_NAME,
+      { leadId: bulkPackage.leadId || bulkPackage.packageId, timestamp: bulkPackage.timestamp },
+      'SET #status = :purchased, purchasedBy = :agentId, purchasedAt = :now, transactionId = :txnId, GSI1PK = :gsi1pk',
+      {
+        ':purchased': 'purchased',
+        ':agentId': agentId,
+        ':now': timestamp,
+        ':txnId': transactionId,
+        ':gsi1pk': `purchased#bulk-package`,
+      },
+      {
+        '#status': 'status',
+      }
+    );
+
+    // Mark all leads in package as claimed by this agent
+    const leadUpdatePromises = bulkPackage.leadIds.map(async (leadId: string) => {
+      const leads = await DynamoDBService.queryItems(
+        config.LEADS_TABLE_NAME,
+        'leadId = :leadId',
+        { ':leadId': leadId }
+      );
+
+      if (leads.length > 0) {
+        const lead = leads[0];
+        return DynamoDBService.updateItem(
+          config.LEADS_TABLE_NAME,
+          { leadId: lead.leadId, timestamp: lead.timestamp },
+          'SET #status = :claimed, claimedBy = :agentId, claimedAt = :now, transactionId = :txnId',
+          {
+            ':claimed': 'claimed',
+            ':agentId': agentId,
+            ':now': timestamp,
+            ':txnId': transactionId,
+          },
+          {
+            '#status': 'status',
+          }
+        );
+      }
+    });
+
+    await Promise.all(leadUpdatePromises);
+
+    // Update agent metrics
+    await DynamoDBService.updateItem(
+      config.AGENTS_TABLE_NAME,
+      { agentId, SK: 'profile' },
+      'SET performanceMetrics.totalSpent = if_not_exists(performanceMetrics.totalSpent, :zero) + :amount, performanceMetrics.leadsOwned = if_not_exists(performanceMetrics.leadsOwned, :zero) + :leadCount, updatedAt = :now',
+      {
+        ':amount': bulkPackage.totalPrice,
+        ':leadCount': bulkPackage.leadCount,
+        ':zero': 0,
+        ':now': timestamp,
+      }
+    );
+
+    console.log(`Bulk package ${bulkPackage.packageId} purchased by agent ${agentId}`);
+
+    return ResponseBuilder.success({
+      transaction,
+      package: bulkPackage,
+      message: `Successfully purchased ${bulkPackage.leadCount} leads for $${bulkPackage.totalPrice}`,
+    });
+  } catch (error: any) {
+    console.error('Bulk package purchase error:', error);
     throw error;
   }
 }
