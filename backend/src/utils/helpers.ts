@@ -127,6 +127,11 @@ export const addHours = (date: Date, hours: number): Date => {
   return new Date(date.getTime() + hours * 60 * 60 * 1000);
 };
 
-export const isExpired = (expiresAt: string): boolean => {
-  return new Date(expiresAt) < new Date();
+export const isExpired = (expiresAt: string | number): boolean => {
+  // Handle Unix timestamp (seconds) - convert to milliseconds
+  const expirationTime = typeof expiresAt === 'number' 
+    ? expiresAt * 1000 
+    : parseInt(expiresAt) * 1000;
+  
+  return expirationTime < Date.now();
 };

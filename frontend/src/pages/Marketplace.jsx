@@ -17,15 +17,20 @@ function Marketplace() {
   const [filters, setFilters] = useState({
     leadType: '',
     minScore: '',
-    maxScore: '',
     maxPrice: '',
   });
 
   useEffect(() => {
-    fetchLeads();
+    const abortController = new AbortController();
+    
+    fetchLeads(abortController.signal);
+    
+    return () => {
+      abortController.abort();
+    };
   }, [filters]);
 
-  const fetchLeads = async () => {
+  const fetchLeads = async (signal) => {
     try {
       setLoading(true);
       setError(null);
@@ -33,16 +38,27 @@ function Marketplace() {
       const params = {};
       if (filters.leadType) params.leadType = filters.leadType;
       if (filters.minScore) params.minScore = filters.minScore;
-      if (filters.maxScore) params.maxScore = filters.maxScore;
       if (filters.maxPrice) params.maxPrice = filters.maxPrice;
 
       const response = await marketplaceAPI.getLeads(params);
-      setLeads(response.data.data.leads || []);
+      
+      // Only update state if request wasn't aborted
+      if (!signal?.aborted) {
+        setLeads(response.data.data.leads || []);
+      }
     } catch (err) {
+      // Ignore abort errors
+      if (err.code === 'ECONNABORTED' || err.code === 'ERR_CANCELED') {
+        return;
+      }
       console.error('Error fetching leads:', err);
-      setError(err.response?.data?.error || 'Failed to load leads');
+      if (!signal?.aborted) {
+        setError(err.response?.data?.error || 'Failed to load leads');
+      }
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
     }
   };
 
@@ -58,7 +74,6 @@ function Marketplace() {
     setFilters({
       leadType: '',
       minScore: '',
-      maxScore: '',
       maxPrice: '',
     });
   };
@@ -106,23 +121,8 @@ function Marketplace() {
               className="form-input"
             >
               <option value="">Any</option>
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(score => (
+              {[8, 9].map(score => (
                 <option key={score} value={score}>{score}+</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Max Score</label>
-            <select 
-              name="maxScore" 
-              value={filters.maxScore} 
-              onChange={handleFilterChange}
-              className="form-input"
-            >
-              <option value="">Any</option>
-              {[2, 3, 4, 5, 6, 7, 8, 9, 10].map(score => (
-                <option key={score} value={score}>{score}</option>
               ))}
             </select>
           </div>

@@ -1,6 +1,6 @@
 import {
   BedrockRuntimeClient,
-  InvokeModelCommand,
+  ConverseCommand,
 } from '@aws-sdk/client-bedrock-runtime';
 import { getConfig, AIScoreResponse } from './types';
 
@@ -19,86 +19,46 @@ export interface ScoringPromptData {
 
 export class AIService {
   /**
-   * Score a lead using Amazon Bedrock (Nova or Claude models)
+   * Score a lead using Amazon Bedrock (Nova only - no fallback)
    */
   static async scoreLead(data: ScoringPromptData): Promise<AIScoreResponse> {
-    try {
-      const prompt = this.buildPrompt(data);
-      
-      // Try primary model (Nova Micro)
-      try {
-        return await this.invokeModel(config.BEDROCK_MODEL_ID, prompt);
-      } catch (error) {
-        console.error('Primary model failed, trying fallback:', error);
-        // Fallback to Claude if Nova fails
-        return await this.invokeModel(config.BEDROCK_FALLBACK_MODEL_ID, prompt);
-      }
-    } catch (error) {
-      console.error('All models failed:', error);
-      throw new Error('Failed to score lead with AI');
-    }
+    const prompt = this.buildPrompt(data);
+    
+    // Use primary model only - fail if it doesn't work
+    return await this.invokeModel(config.BEDROCK_MODEL_ID, prompt);
   }
 
   /**
    * Invoke a Bedrock model with the scoring prompt
    */
   private static async invokeModel(modelId: string, prompt: string): Promise<AIScoreResponse> {
-    const isNovaModel = modelId.includes('nova');
-    const isClaude = modelId.includes('claude');
-
-    let requestBody: any;
-    
-    if (isNovaModel) {
-      // Amazon Nova models use this format
-      requestBody = {
-        messages: [
-          {
-            role: 'user',
-            content: [{ text: prompt }],
-          },
-        ],
-        inferenceConfig: {
-          maxTokens: 1000,
-          temperature: 0.3,
-          topP: 0.9,
-        },
-      };
-    } else if (isClaude) {
-      // Anthropic Claude models use this format
-      requestBody = {
-        anthropic_version: 'bedrock-2023-05-31',
-        max_tokens: 1000,
-        temperature: 0.3,
-        messages: [
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-      };
-    } else {
-      throw new Error(`Unsupported model: ${modelId}`);
-    }
-
-    const command = new InvokeModelCommand({
+    // Use the Converse API - works with all Bedrock models including Nova
+    const command = new ConverseCommand({
       modelId,
-      contentType: 'application/json',
-      accept: 'application/json',
-      body: JSON.stringify(requestBody),
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              text: prompt
+            }
+          ]
+        }
+      ],
+      inferenceConfig: {
+        maxTokens: 1000,
+        temperature: 0.3,
+        topP: 0.9,
+      },
     });
 
     const response = await bedrockClient.send(command);
-    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-
-    // Parse response based on model type
-    let textResponse: string;
     
-    if (isNovaModel) {
-      textResponse = responseBody.output?.message?.content?.[0]?.text || '';
-    } else if (isClaude) {
-      textResponse = responseBody.content?.[0]?.text || '';
-    } else {
-      throw new Error('Unexpected model response format');
+    // Extract text from the response
+    const textResponse = response.output?.message?.content?.[0]?.text || '';
+    
+    if (!textResponse) {
+      throw new Error('Empty response from AI model');
     }
 
     // Extract JSON from response
@@ -202,47 +162,36 @@ Provide your JSON response now:`;
    * Parse AI response text to extract JSON
    */
   private static parseAIResponse(text: string): AIScoreResponse {
-    try {
-      // Try to find JSON in the response
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON found in AI response');
-      }
-
-      const parsed = JSON.parse(jsonMatch[0]);
-
-      // Validate response structure
-      if (
-        typeof parsed.lead_score !== 'number' ||
-        parsed.lead_score < 1 ||
-        parsed.lead_score > 10
-      ) {
-        throw new Error('Invalid lead_score in AI response');
-      }
-
-      if (!['buyer', 'seller'].includes(parsed.lead_type)) {
-        throw new Error('Invalid lead_type in AI response');
-      }
-
-      if (typeof parsed.reason !== 'string' || parsed.reason.length < 10) {
-        throw new Error('Invalid or missing reason in AI response');
-      }
-
-      return {
-        lead_score: Math.round(parsed.lead_score), // Ensure integer
-        lead_type: parsed.lead_type,
-        reason: parsed.reason,
-      };
-    } catch (error) {
-      console.error('Failed to parse AI response:', text, error);
-      
-      // Fallback: return a default moderate score
-      return {
-        lead_score: 5,
-        lead_type: 'buyer',
-        reason: 'AI scoring failed, using default moderate score pending manual review',
-      };
+    // Try to find JSON in the response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('No JSON found in AI response');
     }
+
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    // Validate response structure
+    if (
+      typeof parsed.lead_score !== 'number' ||
+      parsed.lead_score < 1 ||
+      parsed.lead_score > 10
+    ) {
+      throw new Error('Invalid lead_score in AI response');
+    }
+
+    if (!['buyer', 'seller'].includes(parsed.lead_type)) {
+      throw new Error('Invalid lead_type in AI response');
+    }
+
+    if (typeof parsed.reason !== 'string' || parsed.reason.length < 10) {
+      throw new Error('Invalid or missing reason in AI response');
+    }
+
+    return {
+      lead_score: Math.round(parsed.lead_score), // Ensure integer
+      lead_type: parsed.lead_type,
+      reason: parsed.reason,
+    };
   }
 
   /**

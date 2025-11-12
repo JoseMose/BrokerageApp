@@ -1,6 +1,6 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, PutCommand } = require('@aws-sdk/lib-dynamodb');
-const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
+const { DynamoDBDocumentClient, PutCommand, QueryCommand, UpdateCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
+const { BedrockRuntimeClient, ConverseCommand } = require('@aws-sdk/client-bedrock-runtime');
 const { LocationClient, SearchPlaceIndexForTextCommand } = require('@aws-sdk/client-location');
 const { v4: uuidv4 } = require('uuid');
 
@@ -85,15 +85,35 @@ exports.handler = async (event) => {
     // Generate AI reason/summary
     const aiReason = await generateAIReason(body, score);
     
+    // Determine lead tier and status
+    let leadStatus = 'available'; // Default for premium (8-10) and bulk (1-4)
+    let assignedTo = null;
+    
+    // Standard leads (5-7) get auto-assigned via round-robin
+    if (score >= 5 && score <= 7) {
+      const agent = await assignLeadRoundRobin(body.leadType, coordinates || { lat: 33.7490, lng: -84.3880 });
+      if (agent) {
+        leadStatus = 'assigned';
+        assignedTo = agent.agentId;
+        console.log(`Lead auto-assigned to agent ${agent.agentId} via round-robin`);
+      } else {
+        console.log('No eligible agents found, lead will be available in marketplace');
+      }
+    }
+    
     // Construct lead object
     const lead = {
       leadId,
       timestamp: now, // Required sort key
       leadType: body.leadType,
-      status: 'available',
+      status: leadStatus,
       score,
       price,
       aiReason,
+      
+      // Assignment attributes
+      assignedTo: assignedTo,
+      assignedAt: assignedTo ? now : null,
       
       // Locking attributes (initially null)
       lockedBy: null,
@@ -118,8 +138,9 @@ exports.handler = async (event) => {
         address: body.location.address.trim(),
         city: body.location.city.trim(),
         state: body.location.state,
-        zipCode: body.location.zipCode,
-        coordinates
+        zip: body.location.zipCode,
+        lat: coordinates?.lat || 33.7490, // Default to Atlanta if geocoding fails
+        lng: coordinates?.lng || -84.3880
       },
       
       // Questionnaire responses
@@ -127,9 +148,11 @@ exports.handler = async (event) => {
       
       // Metadata
       createdAt: now,
+      expiresAt: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60), // 30 days from now
       
       // GSI attributes
-      statusType: `available#${body.leadType}`,
+      GSI1PK: `${leadStatus}#${body.leadType}`, // 'available#buyer', 'assigned#seller', etc.
+      GSI1SK: `${String(score).padStart(2, '0')}#${now}`, // Sort by score desc, then timestamp
       scorePrice: `${String(score).padStart(2, '0')}#${String(Math.floor(price)).padStart(4, '0')}`
     };
     
@@ -152,6 +175,9 @@ exports.handler = async (event) => {
         message: 'Lead submitted successfully',
         data: {
           leadId,
+          score,
+          price,
+          aiReason,
           estimatedResponse: '24 hours'
         }
       })
@@ -172,6 +198,116 @@ exports.handler = async (event) => {
     };
   }
 };
+
+/**
+ * Assign lead to next agent in round-robin rotation
+ * Only assigns to agents who:
+ * - Accept this lead type
+ * - Are active
+ * - Are within reasonable distance (50 miles default)
+ */
+async function assignLeadRoundRobin(leadType, leadCoordinates) {
+  try {
+    // Get all active agents
+    const scanResult = await ddb.send(new ScanCommand({
+      TableName: process.env.AGENTS_TABLE_NAME,
+      FilterExpression: '#status = :active AND #sk = :profile',
+      ExpressionAttributeNames: {
+        '#status': 'status',
+        '#sk': 'SK'
+      },
+      ExpressionAttributeValues: {
+        ':active': 'active',
+        ':profile': 'profile'
+      }
+    }));
+    
+    if (!scanResult.Items || scanResult.Items.length === 0) {
+      console.log('No active agents found');
+      return null;
+    }
+    
+    // Filter agents who accept this lead type
+    const eligibleAgents = scanResult.Items.filter(agent => {
+      // Check if agent accepts this lead type
+      if (!agent.preferences?.leadTypes?.includes(leadType)) {
+        return false;
+      }
+      
+      // Check distance (basic check - could be improved with actual location service)
+      if (agent.location?.lat && agent.location?.lng && leadCoordinates.lat && leadCoordinates.lng) {
+        const distance = calculateDistance(
+          agent.location.lat,
+          agent.location.lng,
+          leadCoordinates.lat,
+          leadCoordinates.lng
+        );
+        
+        const maxRadius = agent.radius || 50; // Default 50 miles
+        if (distance > maxRadius) {
+          return false;
+        }
+      }
+      
+      return true;
+    });
+    
+    if (eligibleAgents.length === 0) {
+      console.log('No eligible agents for this lead type and location');
+      return null;
+    }
+    
+    // Sort by lastAssignedAt (oldest first) for fair rotation
+    eligibleAgents.sort((a, b) => {
+      const aTime = a.lastAssignedAt || 0;
+      const bTime = b.lastAssignedAt || 0;
+      return aTime - bTime; // Oldest assignment first
+    });
+    
+    // Select the agent who was assigned longest ago
+    const selectedAgent = eligibleAgents[0];
+    
+    // Update agent's lastAssignedAt timestamp
+    await ddb.send(new UpdateCommand({
+      TableName: process.env.AGENTS_TABLE_NAME,
+      Key: {
+        agentId: selectedAgent.agentId,
+        SK: 'profile'
+      },
+      UpdateExpression: 'SET lastAssignedAt = :now, assignedLeadsCount = if_not_exists(assignedLeadsCount, :zero) + :one',
+      ExpressionAttributeValues: {
+        ':now': new Date().toISOString(),
+        ':zero': 0,
+        ':one': 1
+      }
+    }));
+    
+    return selectedAgent;
+  } catch (error) {
+    console.error('Round-robin assignment error:', error);
+    return null;
+  }
+}
+
+/**
+ * Calculate distance between two coordinates (in miles)
+ * Using Haversine formula
+ */
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 3959; // Earth's radius in miles
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function toRad(degrees) {
+  return degrees * (Math.PI / 180);
+}
 
 /**
  * Validate lead input data
@@ -221,39 +357,34 @@ function validateLeadInput(body) {
  * Calculate lead score using AI (1-10)
  */
 async function calculateLeadScore(leadData) {
-  try {
-    const prompt = buildScoringPrompt(leadData);
-    
-    const response = await bedrock.send(new InvokeModelCommand({
-      modelId: 'amazon.nova-micro-v1:0',
-      contentType: 'application/json',
-      accept: 'application/json',
-      body: JSON.stringify({
-        messages: [{
-          role: 'user',
-          content: prompt
-        }],
-        inferenceConfig: {
-          max_new_tokens: 100,
-          temperature: 0.3
-        }
-      })
-    }));
-    
-    const result = JSON.parse(new TextDecoder().decode(response.body));
-    const aiResponse = result.output?.message?.content?.[0]?.text || '';
-    
-    // Extract score from AI response
-    const scoreMatch = aiResponse.match(/\b([1-9]|10)\b/);
-    const score = scoreMatch ? parseInt(scoreMatch[1]) : 5;
-    
-    return Math.max(1, Math.min(10, score)); // Ensure 1-10 range
-    
-  } catch (error) {
-    console.error('AI scoring failed:', error);
-    // Fallback: Simple rule-based scoring
-    return calculateFallbackScore(leadData);
+  // Always use AI - no fallback, fail fast if Bedrock is not working
+  const prompt = buildScoringPrompt(leadData);
+  
+  const response = await bedrock.send(new ConverseCommand({
+    modelId: 'amazon.nova-micro-v1:0',
+    messages: [{
+      role: 'user',
+      content: [{
+        text: prompt
+      }]
+    }],
+    inferenceConfig: {
+      maxTokens: 100,
+      temperature: 0.3
+    }
+  }));
+  
+  const aiResponse = response.output?.message?.content?.[0]?.text || '';
+  
+  // Extract score from AI response
+  const scoreMatch = aiResponse.match(/\b([1-9]|10)\b/);
+  if (!scoreMatch) {
+    throw new Error(`AI scoring failed to return a valid score. Response: ${aiResponse}`);
   }
+  
+  const score = parseInt(scoreMatch[1]);
+  
+  return Math.max(1, Math.min(10, score)); // Ensure 1-10 range
 }
 
 /**
@@ -282,39 +413,6 @@ Consider urgency, property value, and experience. Return only a number 1-10.`;
 }
 
 /**
- * Fallback scoring when AI is unavailable
- */
-function calculateFallbackScore(leadData) {
-  let score = 5; // Base score
-  
-  const { leadType, responses } = leadData;
-  
-  if (leadType === 'buyer') {
-    // Urgency
-    if (responses.buyingTimeline === 'immediately') score += 3;
-    else if (responses.buyingTimeline === '1-3-months') score += 2;
-    else if (responses.buyingTimeline === '3-6-months') score += 1;
-    
-    // Pre-approval
-    if (responses.preApproved === true) score += 2;
-    
-  } else {
-    // Urgency
-    if (responses.sellingTimeline === 'immediately') score += 3;
-    else if (responses.sellingTimeline === '1-3-months') score += 2;
-    else if (responses.sellingTimeline === '3-6-months') score += 1;
-    
-    // Experience
-    if (responses.hasListedBefore === true) score += 1;
-    
-    // Value
-    if (responses.estimatedValue === '1m+') score += 1;
-  }
-  
-  return Math.max(1, Math.min(10, score));
-}
-
-/**
  * Calculate lead price based on score
  */
 function calculateLeadPrice(score, leadType) {
@@ -337,41 +435,35 @@ function calculateLeadPrice(score, leadType) {
  * Generate AI reason/summary
  */
 async function generateAIReason(leadData, score) {
-  try {
-    const prompt = `Summarize this real estate lead in one sentence (max 80 chars):
+  const prompt = `Summarize this real estate lead in one sentence (max 80 chars):
 Lead type: ${leadData.leadType}
 Timeline: ${leadData.responses.buyingTimeline || leadData.responses.sellingTimeline}
 Score: ${score}/10
 Location: ${leadData.location.city}, ${leadData.location.state}
 
 Be concise and highlight the key strength.`;
-    
-    const response = await bedrock.send(new InvokeModelCommand({
-      modelId: 'amazon.nova-micro-v1:0',
-      contentType: 'application/json',
-      accept: 'application/json',
-      body: JSON.stringify({
-        messages: [{
-          role: 'user',
-          content: prompt
-        }],
-        inferenceConfig: {
-          max_new_tokens: 50,
-          temperature: 0.7
-        }
-      })
-    }));
-    
-    const result = JSON.parse(new TextDecoder().decode(response.body));
-    const aiReason = result.output?.message?.content?.[0]?.text?.trim() || '';
-    
-    return aiReason.substring(0, 200); // Limit length
-    
-  } catch (error) {
-    console.error('AI reason generation failed:', error);
-    // Fallback reason
-    return `${leadData.leadType === 'buyer' ? 'Buyer' : 'Seller'} in ${leadData.location.city} - Score ${score}/10`;
+  
+  const response = await bedrock.send(new ConverseCommand({
+    modelId: 'amazon.nova-micro-v1:0',
+    messages: [{
+      role: 'user',
+      content: [{
+        text: prompt
+      }]
+    }],
+    inferenceConfig: {
+      maxTokens: 50,
+      temperature: 0.7
+    }
+  }));
+  
+  const aiReason = response.output?.message?.content?.[0]?.text?.trim() || '';
+  
+  if (!aiReason) {
+    throw new Error('AI failed to generate lead summary');
   }
+  
+  return aiReason.substring(0, 200); // Limit length
 }
 
 /**

@@ -1,230 +1,191 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import LeadForm from '../components/LeadForm';
-import './LandingPage.css';
 
-/**
- * Public-facing landing page for lead generation
- * Users see this BEFORE becoming a lead in the system
- */
-function LandingPage() {
+const LandingPage = () => {
   const [showForm, setShowForm] = useState(false);
-  const navigate = useNavigate();
 
-  const handleGetStarted = () => {
-    setShowForm(true);
-    // Smooth scroll to form
-    setTimeout(() => {
-      document.getElementById('lead-form-section')?.scrollIntoView({ 
-        behavior: 'smooth',
-        block: 'start'
-      });
-    }, 100);
-  };
-
-  const handleRealtorLogin = () => {
-    navigate('/realtor-login');
-  };
+  if (showForm) {
+    return <LeadForm />;
+  }
 
   return (
-    <div className="landing-page">
-      {/* Navigation Bar */}
-      <nav className="landing-nav">
-        <div className="container nav-content">
-          <div className="nav-logo">
-            <h2>🏠 Realtor Lead Platform</h2>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50">
+      {/* Top Navigation Bar */}
+      <nav className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center">
+              <span className="text-2xl font-bold bg-gradient-to-r from-primary-500 to-secondary-500 bg-clip-text text-transparent">
+                LeadConnect
+              </span>
+            </div>
+            <div className="flex items-center gap-4">
+              <a
+                href="/realtor-login"
+                className="text-gray-700 hover:text-primary-600 font-medium transition-colors"
+              >
+                Realtor Sign In
+              </a>
+              <button
+                onClick={() => setShowForm(true)}
+                className="btn btn-primary"
+              >
+                Get Started
+              </button>
+            </div>
           </div>
-          <button 
-            className="realtor-login-btn"
-            onClick={handleRealtorLogin}
-          >
-            Realtor Sign In
-          </button>
         </div>
       </nav>
 
       {/* Hero Section */}
-      <section className="hero-section">
-        <div className="hero-overlay">
-          <div className="hero-content">
-            <h1 className="hero-title">
-              Find the Right Realtor for You
+      <section className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary-500/10 via-transparent to-secondary-500/10"></div>
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-32">
+          <div className="text-center">
+            <div className="inline-flex items-center gap-2 bg-primary-100 text-primary-700 px-4 py-2 rounded-full text-sm font-semibold mb-8">
+              <span>🤖 AI-Powered Matching</span>
+            </div>
+
+            <h1 className="text-5xl md:text-7xl font-bold text-gray-900 mb-6">
+              Find a Realtor Who's{' '}
+              <span className="bg-gradient-to-r from-primary-500 to-secondary-500 bg-clip-text text-transparent">
+                Ready to Work for You
+              </span>
             </h1>
-            <p className="hero-subtitle">
-              Answer a few quick questions and we'll connect you with an experienced local agent.
+
+            <p className="text-xl md:text-2xl text-gray-600 mb-12 max-w-3xl mx-auto">
+              Our AI system matches you with an agent based on{' '}
+              <strong className="text-gray-900">readiness, fairness, and fit</strong>
+              {' '}— not who pays the most.
             </p>
-            <button 
-              className="cta-button"
-              onClick={handleGetStarted}
+
+            <button
+              onClick={() => setShowForm(true)}
+              className="group inline-flex items-center gap-3 bg-gradient-to-r from-primary-500 to-secondary-500 hover:from-primary-600 hover:to-secondary-600 text-white font-bold text-lg px-10 py-5 rounded-2xl transition-all duration-300 transform hover:scale-105 shadow-2xl"
             >
-              Get Started
-              <span className="cta-arrow">→</span>
+              <span>Get Started</span>
+              <svg className="w-6 h-6 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
             </button>
+
+            <div className="mt-12 flex flex-wrap justify-center gap-8 text-sm text-gray-600">
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span>100% Free for Buyers & Sellers</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span>No Obligation</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span>Fair & Transparent</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* How Our AI Works Section - NEW */}
-      <section className="ai-explainer-section">
-        <div className="container">
-          <h2 className="section-title ai-title">How Our Smart Matching System Works</h2>
-          <p className="ai-intro">
-            Our AI analyzes key factors — from your location and timeline to agent performance and response speed — 
-            to match you with the best available realtor. Each client submission is carefully scored from <strong>1 to 10</strong>, 
-            ensuring agents respond only to verified, serious inquiries. This means <em>faster responses</em>, 
-            <em>better communication</em>, and <em>a smoother experience</em>.
-          </p>
-          
-          <div className="ai-steps-grid">
-            <div className="ai-step-card">
-              <div className="ai-step-icon">🔍</div>
-              <h3 className="ai-step-title">1. Analyze</h3>
-              <p className="ai-step-description">
-                Our AI evaluates your needs, location, timeline, and preferences to create a comprehensive profile.
-              </p>
-            </div>
-            
-            <div className="ai-step-card">
-              <div className="ai-step-icon">🎯</div>
-              <h3 className="ai-step-title">2. Match</h3>
-              <p className="ai-step-description">
-                We score your inquiry (1-10) and instantly connect you with agents who specialize in your specific needs.
-              </p>
-            </div>
-            
-            <div className="ai-step-card">
-              <div className="ai-step-icon">⚡</div>
-              <h3 className="ai-step-title">3. Connect</h3>
-              <p className="ai-step-description">
-                Top-rated local agents receive your information and respond within minutes—not days.
-              </p>
-            </div>
-          </div>
-
-          <div className="ai-trust-badge">
-            <span className="trust-icon">🤖</span>
-            <p className="trust-text">
-              <strong>AI-Powered Quality Control:</strong> Only serious, qualified leads are shared with agents, 
-              ensuring you get the attention and service you deserve.
+      {/* How Our AI Works Section */}
+      <section className="py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+              How Our Smart Matching System Works
+            </h2>
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              Our AI-powered platform ensures you get connected with the right agent,
+              at the right time, for the right reasons.
             </p>
           </div>
-        </div>
-      </section>
 
-      {/* By Realtors, For Realtors Section */}
-      <section className="realtor-commitment-section">
-        <div className="container">
-          <div className="commitment-badge">
-            <span className="badge-icon">⭐</span>
-            <h3>Made by Realtors, for Realtors</h3>
-          </div>
-          <p className="commitment-text">
-            We're real estate professionals who understand the challenges of lead generation. 
-            That's why we built a platform that connects clients with agents who truly want to work with them—
-            no cold calls, no pressure, just genuine connections.
-          </p>
-        </div>
-      </section>
-
-      {/* Features Section */}
-      <section className="features-section">
-        <div className="container">
-          <h2 className="section-title">Why Our Realtors Stand Out</h2>
-          <div className="features-grid">
-            <div className="feature-card">
-              <div className="feature-icon">⚖️</div>
-              <h3>The Fairest System</h3>
-              <p>Our revolutionary fair-access system ensures every realtor gets equal opportunity—no favoritism, no hidden advantages. When you work with our agents, you're working with professionals who earned your lead fairly.</p>
-            </div>
-            <div className="feature-card">
-              <div className="feature-icon">🎯</div>
-              <h3>Agents Who Want You</h3>
-              <p>Unlike traditional lead generation, agents actively choose to work with you based on your specific needs. This means you get someone genuinely interested in helping you succeed.</p>
-            </div>
-            <div className="feature-card">
-              <div className="feature-icon">⚡</div>
-              <h3>Fast Response Time</h3>
-              <p>Because agents opt-in to work with you, they respond within minutes—not days. No more waiting around wondering if someone will call you back.</p>
-            </div>
-            <div className="feature-card">
-              <div className="feature-icon">🔒</div>
-              <h3>100% Free for You</h3>
-              <p>Clients never pay anything. Ever. Our realtors invest in quality leads because they know it leads to better partnerships.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Fair System Explainer */}
-      <section className="fair-system-section">
-        <div className="container">
-          <h2 className="section-title">The Fairest Lead System in Real Estate</h2>
-          <div className="fair-system-content">
-            <div className="fair-system-text">
-              <p className="lead-text">
-                Traditional lead platforms favor whoever pays the most or has the best connections. 
-                We reject that model entirely.
-              </p>
-              <ul className="fair-system-list">
-                <li>
-                  <span className="check-icon">✓</span>
-                  <strong>Equal Access:</strong> Every realtor sees new leads at exactly the same time
-                </li>
-                <li>
-                  <span className="check-icon">✓</span>
-                  <strong>No Favoritism:</strong> No VIP tiers, no paying extra for priority
-                </li>
-                <li>
-                  <span className="check-icon">✓</span>
-                  <strong>Transparent Pricing:</strong> All agents pay the same fair price based on lead quality
-                </li>
-                <li>
-                  <span className="check-icon">✓</span>
-                  <strong>Quality Matters:</strong> Agents choose leads that fit their expertise
-                </li>
-              </ul>
-              <p className="highlight-text">
-                This fairness is exactly why clients prefer working with our realtors—
-                they know their agent genuinely wants to help them succeed.
+          <div className="grid md:grid-cols-3 gap-8 mb-16">
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl p-8 transition-all duration-300 hover:shadow-xl hover:-translate-y-2">
+              <div className="flex justify-center mb-6">
+                <div className="w-20 h-20 bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
+                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-3 text-center">1. Analyze</h3>
+              <p className="text-gray-600 text-center">
+                We review your goals, timeline, and specific needs through a simple questionnaire.
               </p>
             </div>
-            <div className="fair-system-visual">
-              <div className="fair-icon">⚖️</div>
-              <p className="fair-caption">Fair for realtors = Better for clients</p>
+
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-2xl p-8 transition-all duration-300 hover:shadow-xl hover:-translate-y-2">
+              <div className="flex justify-center mb-6">
+                <div className="w-20 h-20 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-2xl flex items-center justify-center shadow-lg">
+                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                </div>
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-3 text-center">2. Match</h3>
+              <p className="text-gray-600 text-center">
+                AI scores your readiness from 1-10 and intelligently pairs you with the best available agent.
+              </p>
+            </div>
+
+            <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-2xl p-8 transition-all duration-300 hover:shadow-xl hover:-translate-y-2">
+              <div className="flex justify-center mb-6">
+                <div className="w-20 h-20 bg-gradient-to-r from-green-500 to-green-600 rounded-2xl flex items-center justify-center shadow-lg">
+                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                </div>
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-3 text-center">3. Connect</h3>
+              <p className="text-gray-600 text-center">
+                We instantly connect you with a top-rated agent who's ready and excited to help you.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-r from-primary-500 to-secondary-500 rounded-2xl p-8 shadow-2xl">
+            <div className="flex flex-col md:flex-row items-center justify-center gap-6 text-white">
+              <div className="text-5xl">🤖</div>
+              <div className="text-center md:text-left">
+                <h3 className="text-2xl font-bold mb-2">AI-Powered Quality Control</h3>
+                <p className="text-white/90">
+                  Only serious, qualified leads are shared with agents, ensuring you get the attention and service you deserve.
+                </p>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Lead Form Section */}
-      {showForm && (
-        <section id="lead-form-section" className="form-section">
-          <div className="container">
-            <LeadForm />
-          </div>
-        </section>
-      )}
-
-      {/* Trust Indicators */}
-      <section className="trust-section">
-        <div className="container">
-          <p className="trust-text">
-            🔐 Your information is secure and will only be shared with your matched agent
+      {/* Final CTA */}
+      <section className="py-20 bg-gradient-to-br from-primary-500 to-secondary-500">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
+            Ready to Find Your Perfect Agent?
+          </h2>
+          <p className="text-xl text-white/90 mb-10">
+            It takes less than 2 minutes to get matched with a top-rated realtor in your area.
           </p>
+          <button
+            onClick={() => setShowForm(true)}
+            className="group inline-flex items-center gap-3 bg-white hover:bg-gray-50 text-primary-600 font-bold text-lg px-10 py-5 rounded-2xl transition-all duration-300 transform hover:scale-105 shadow-2xl"
+          >
+            <span>Get Started Now</span>
+            <svg className="w-6 h-6 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+            </svg>
+          </button>
         </div>
       </section>
-
-      {/* Footer */}
-      <footer className="landing-footer">
-        <div className="container">
-          <p>© 2025 Realtor Lead Platform. Built by realtors, for realtors.</p>
-          <p>
-            <a href="/realtor-login">Realtor Login</a>
-          </p>
-        </div>
-      </footer>
     </div>
   );
-}
+};
 
 export default LandingPage;

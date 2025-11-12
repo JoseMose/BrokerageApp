@@ -12,6 +12,7 @@ function Profile() {
   const [isNewProfile, setIsNewProfile] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
+    email: '',
     licenseId: '',
     brokerage: '',
     phone: '',
@@ -42,6 +43,7 @@ function Profile() {
       setProfile(profileData);
       setFormData({
         name: profileData.name || '',
+        email: profileData.email || '',
         licenseId: profileData.licenseId || '',
         brokerage: profileData.brokerage || '',
         phone: profileData.phone || '',
@@ -193,6 +195,19 @@ function Profile() {
               value={formData.name}
               onChange={handleChange}
               className="form-input"
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Email Address *</label>
+            <input
+              type="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              className="form-input"
+              placeholder="your@email.com"
               required
             />
           </div>

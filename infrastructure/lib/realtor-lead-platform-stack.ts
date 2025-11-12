@@ -364,6 +364,19 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       description: 'Handles agent profile CRUD operations',
     });
 
+    // Bulk Packages Lambda
+    const bulkPackagesFunction = new lambda.Function(this, 'BulkPackagesFunction', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      functionName: 'RealtorBulkPackages',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/dist/bulk-packages')),
+      handler: 'index.handler',
+      timeout: cdk.Duration.seconds(60),
+      memorySize: 512,
+      role: lambdaRole,
+      environment: commonEnvironment,
+      description: 'Handles bulk lead package creation and purchase',
+    });
+
         // Admin Lambda
     const adminFunction = new lambda.Function(this, 'AdminFunction', {
       runtime: lambda.Runtime.NODEJS_18_X,
@@ -505,6 +518,29 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       }
     );
 
+    // Agent assigned leads endpoint
+    const assignedLeadsResource = agentsResource.addResource('assigned-leads');
+    assignedLeadsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(agentManagementFunction),
+      {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // Agent pass lead endpoint
+    const passLeadResource = agentsResource.addResource('pass-lead');
+    const passLeadByIdResource = passLeadResource.addResource('{leadId}');
+    passLeadByIdResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(agentManagementFunction),
+      {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
     // Payment endpoints
     const purchaseResource = paymentsResource.addResource('purchase');
     purchaseResource.addMethod(
@@ -535,6 +571,48 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
     adminResource.addMethod(
       'POST',
       new apigateway.LambdaIntegration(adminFunction),
+      {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // Admin bulk packages endpoints
+    const adminBulkPackagesResource = adminResource.addResource('bulk-packages');
+    adminBulkPackagesResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(bulkPackagesFunction),
+      {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    adminBulkPackagesResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(bulkPackagesFunction),
+      {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // Agent bulk packages endpoints
+    const bulkPackagesResource = api.root.addResource('bulk-packages');
+    bulkPackagesResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(bulkPackagesFunction),
+      {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    const bulkPackageByIdResource = bulkPackagesResource.addResource('{packageId}');
+    const purchasePackageResource = bulkPackageByIdResource.addResource('purchase');
+    purchasePackageResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(bulkPackagesFunction),
       {
         authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -648,6 +726,7 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/dist/create-lead')),
       environment: {
         LEADS_TABLE_NAME: leadsTable.tableName,
+        AGENTS_TABLE_NAME: agentsTable.tableName,
         APPSYNC_API_ID: appsyncApi.apiId,
         APPSYNC_ENDPOINT: appsyncApi.graphqlUrl,
         PLACE_INDEX_NAME: placeIndex.indexName,
@@ -656,6 +735,7 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
     });
 
     leadsTable.grantWriteData(createLeadLambda);
+    agentsTable.grantReadWriteData(createLeadLambda);
     appsyncApi.grant(createLeadLambda, appsync.IamResource.all(), 'appsync:GraphQL');
 
     // Grant Location Service permissions for geocoding

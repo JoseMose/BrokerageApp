@@ -24,7 +24,8 @@ function Navigation({ user, signOut }) {
         <div className="nav-menu">
           <Link to="/dashboard" className="nav-link">Dashboard</Link>
           <Link to="/marketplace" className="nav-link">Marketplace</Link>
-          <Link to="/history" className="nav-link">Purchase History</Link>
+          <Link to="/bulk-leads" className="nav-link">Bulk Leads</Link>
+          <Link to="/history" className="nav-link">My Leads</Link>
           <Link to="/profile" className="nav-link">Profile</Link>
           
           <div className="nav-user">

@@ -16,7 +16,9 @@ const handlers = [
   'claim-lead',
   'cleanup-expired-locks',
   // Public lead generation
-  'create-lead'
+  'create-lead',
+  // Bulk packages
+  'bulk-packages'
 ];
 
 const distDir = path.join(__dirname, '..', 'dist');

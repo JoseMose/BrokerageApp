@@ -6,7 +6,7 @@ export interface Lead {
   leadType: 'buyer' | 'seller';
   score: number;
   price: number;
-  status: 'available' | 'sold' | 'expired';
+  status: 'available' | 'assigned' | 'sold' | 'expired';
   contact: {
     name: string;
     email: string;
@@ -26,6 +26,8 @@ export interface Lead {
   expiresAt: string;
   purchasedBy?: string;
   purchasedAt?: string;
+  assignedTo?: string;
+  assignedAt?: string;
   GSI1PK: string; // status#leadType
   GSI1SK: string; // score#timestamp
 }
@@ -76,7 +78,7 @@ export interface Transaction {
   leadId: string;
   amount: number;
   score: number;
-  stripePaymentIntentId: string;
+  stripePaymentIntentId?: string; // Optional for assigned leads (no payment)
   status: 'pending' | 'completed' | 'refunded';
   createdAt: string;
   refundedAt?: string;

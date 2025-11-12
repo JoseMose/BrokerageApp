@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { agentAPI } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
+import AssignedLeads from '../components/AssignedLeads';
 import './Dashboard.css';
 
 function Dashboard() {
@@ -171,6 +172,11 @@ function Dashboard() {
         </div>
       </div>
 
+      {/* Assigned Leads Section */}
+      <div className="card">
+        <AssignedLeads />
+      </div>
+
       <div className="card">
         <h3>Quick Actions</h3>
         <div className="action-buttons">
@@ -178,7 +184,7 @@ function Dashboard() {
             Browse Available Leads
           </a>
           <a href="/history" className="btn btn-outline">
-            View Purchase History
+            View My Leads
           </a>
           <a href="/profile" className="btn btn-outline">
             Update Preferences

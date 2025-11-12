@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { marketplaceAPI, paymentAPI } from '../utils/api';
+import { stripePromise } from '../utils/stripe';
 import ScoreMeter from '../components/ScoreMeter';
 import { 
   formatCurrency, 
@@ -11,8 +11,6 @@ import {
   formatDate 
 } from '../utils/helpers';
 import './LeadDetails.css';
-
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
 
 function CheckoutForm({ lead, onSuccess, onError }) {
   const stripe = useStripe();
@@ -188,7 +186,7 @@ function LeadDetails() {
 
         <div className="action-buttons">
           <button onClick={() => navigate('/history')} className="btn btn-primary">
-            View Purchase History
+            View My Leads
           </button>
           <button onClick={() => navigate('/marketplace')} className="btn btn-outline">
             Browse More Leads

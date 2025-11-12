@@ -96,7 +96,16 @@ async function listAvailableLeads(agent: Agent, queryParams: any) {
     }
 
     // Apply agent's minimum score preference
-    allLeads = allLeads.filter((lead: Lead) => lead.score >= agent.preferences.minScore);
+    // Note: Standard leads (5-7) that couldn't be auto-assigned are shown regardless of minScore
+    // to ensure they're still available as fallback
+    allLeads = allLeads.filter((lead: Lead) => {
+      // Always show standard leads (5-7) as fallback when they're in marketplace
+      if (lead.score >= 5 && lead.score <= 7) {
+        return true;
+      }
+      // For other leads, apply minScore filter
+      return lead.score >= agent.preferences.minScore;
+    });
 
     // Apply price filters
     if (params.maxPrice !== undefined) {

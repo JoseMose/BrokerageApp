@@ -18,8 +18,8 @@ function PurchaseHistory() {
       const response = await agentAPI.getProfile();
       setPurchases(response.data.data.purchasedLeads || []);
     } catch (err) {
-      console.error('Error fetching purchase history:', err);
-      setError(err.response?.data?.error || 'Failed to load purchase history');
+      console.error('Error fetching my leads:', err);
+      setError(err.response?.data?.error || 'Failed to load my leads');
     } finally {
       setLoading(false);
     }
@@ -45,7 +45,7 @@ function PurchaseHistory() {
 
   return (
     <div className="container purchase-history">
-      <h1>Purchase History</h1>
+      <h1>My Leads</h1>
       <p className="subtitle">View all your purchased leads and contact information</p>
 
       {purchases.length === 0 ? (
@@ -78,25 +78,25 @@ function PurchaseHistory() {
                   </div>
                 </div>
 
-                {lead && (
+                {lead && lead.contact && (
                   <div className="lead-info-purchase">
                     <div className="info-section">
                       <h4>Contact Information</h4>
                       <div className="contact-details">
                         <div className="contact-row">
                           <span className="label">Name:</span>
-                          <span className="value">{lead.contact.name}</span>
+                          <span className="value">{lead.contact?.name || 'N/A'}</span>
                         </div>
                         <div className="contact-row">
                           <span className="label">Email:</span>
-                          <a href={`mailto:${lead.contact.email}`} className="value link">
-                            {lead.contact.email}
+                          <a href={`mailto:${lead.contact?.email}`} className="value link">
+                            {lead.contact?.email || 'N/A'}
                           </a>
                         </div>
                         <div className="contact-row">
                           <span className="label">Phone:</span>
-                          <a href={`tel:${lead.contact.phone}`} className="value link">
-                            {lead.contact.phone}
+                          <a href={`tel:${lead.contact?.phone}`} className="value link">
+                            {lead.contact?.phone || 'N/A'}
                           </a>
                         </div>
                       </div>
@@ -105,14 +105,14 @@ function PurchaseHistory() {
                     <div className="info-section">
                       <h4>Location</h4>
                       <p>
-                        {lead.location.address}<br />
-                        {lead.location.city}, {lead.location.state} {lead.location.zip}
+                        {lead.location?.address || 'N/A'}<br />
+                        {lead.location?.city || 'N/A'}, {lead.location?.state || 'N/A'} {lead.location?.zip || ''}
                       </p>
                     </div>
 
                     <div className="info-section">
                       <h4>AI Analysis</h4>
-                      <p className="ai-reason">{lead.aiReason}</p>
+                      <p className="ai-reason">{lead.aiReason || 'No analysis available'}</p>
                     </div>
 
                     {lead.responses && Object.keys(lead.responses).length > 0 && (

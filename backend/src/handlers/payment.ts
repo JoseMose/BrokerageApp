@@ -47,7 +47,6 @@ async function purchaseLead(event: APIGatewayEvent) {
 
     RequestValidator.validateRequired({
       leadId: body.leadId,
-      paymentMethodId: body.paymentMethodId,
     });
 
     // Get agent profile
@@ -79,8 +78,11 @@ async function purchaseLead(event: APIGatewayEvent) {
 
     const lead = leads[0] as Lead;
 
-    // Validate lead is available
-    if (lead.status !== 'available') {
+    // Check if this is an assigned lead (different validation rules)
+    const isAssignedLead = lead.status === 'assigned' && lead.assignedTo === agentId;
+
+    // Validate lead is available or assigned to this agent
+    if (lead.status !== 'available' && !isAssignedLead) {
       return ResponseBuilder.error('Lead is no longer available', 410);
     }
 
@@ -88,17 +90,25 @@ async function purchaseLead(event: APIGatewayEvent) {
       return ResponseBuilder.error('Lead has expired', 410);
     }
 
-    // Validate agent preferences
-    if (!agent.preferences.leadTypes.includes(lead.leadType)) {
-      return ResponseBuilder.forbidden('This lead type does not match your preferences');
+    // Payment method is required for all purchases
+    if (!body.paymentMethodId) {
+      return ResponseBuilder.error('Payment method required', 400);
     }
 
-    if (lead.score < agent.preferences.minScore) {
-      return ResponseBuilder.forbidden('Lead score is below your minimum preference');
-    }
+    // For marketplace leads, validate agent preferences
+    if (!isAssignedLead) {
+      // Validate agent preferences
+      if (!agent.preferences.leadTypes.includes(lead.leadType)) {
+        return ResponseBuilder.forbidden('This lead type does not match your preferences');
+      }
 
-    if (lead.price > agent.preferences.maxPrice) {
-      return ResponseBuilder.forbidden('Lead price exceeds your maximum budget');
+      if (lead.score < agent.preferences.minScore) {
+        return ResponseBuilder.forbidden('Lead score is below your minimum preference');
+      }
+
+      if (lead.price > agent.preferences.maxPrice) {
+        return ResponseBuilder.forbidden('Lead price exceeds your maximum budget');
+      }
     }
 
     // Check if agent already purchased this lead (prevent double purchase)
@@ -119,92 +129,107 @@ async function purchaseLead(event: APIGatewayEvent) {
       return ResponseBuilder.error('You have already purchased this lead', 409);
     }
 
-    // Create or get Stripe customer
+    let paymentIntentId = null;
     let stripeCustomerId = agent.stripeCustomerId;
 
-    if (!stripeCustomerId) {
-      const customer = await stripe.customers.create({
-        email: agent.email,
-        name: agent.name,
-        metadata: {
-          agentId: agent.agentId,
-          licenseId: agent.licenseId,
+    // Process Stripe payment for all purchases (assigned and marketplace)
+    if (body.paymentMethodId) {
+      // Create or get Stripe customer
+      if (!stripeCustomerId) {
+        const customer = await stripe.customers.create({
+          email: agent.email,
+          name: agent.name,
+          metadata: {
+            agentId: agent.agentId,
+            licenseId: agent.licenseId,
+          },
+        });
+
+        stripeCustomerId = customer.id;
+
+        // Save customer ID to agent profile
+        await DynamoDBService.updateItem(
+          config.AGENTS_TABLE_NAME,
+          { agentId, SK: 'profile' },
+          'SET stripeCustomerId = :customerId',
+          {
+            ':customerId': stripeCustomerId,
+          }
+        );
+      }
+
+      // Create payment intent
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: Math.round(lead.price * 100), // Convert to cents
+        currency: 'usd',
+        customer: stripeCustomerId,
+        payment_method: body.paymentMethodId,
+        confirm: true,
+        automatic_payment_methods: {
+          enabled: true,
+          allow_redirects: 'never',
         },
+        metadata: {
+          leadId: lead.leadId,
+          agentId: agentId,
+          leadType: lead.leadType,
+          leadScore: lead.score.toString(),
+        },
+        description: `Lead purchase - ${lead.leadType} lead (Score: ${lead.score}/10)`,
       });
 
-      stripeCustomerId = customer.id;
+      paymentIntentId = paymentIntent.id;
 
-      // Save customer ID to agent profile
-      await DynamoDBService.updateItem(
-        config.AGENTS_TABLE_NAME,
-        { agentId, SK: 'profile' },
-        'SET stripeCustomerId = :customerId',
-        {
-          ':customerId': stripeCustomerId,
-        }
-      );
+      // Check payment status
+      if (paymentIntent.status !== 'succeeded') {
+        return ResponseBuilder.error(
+          `Payment ${paymentIntent.status}. Please check your payment method.`,
+          402
+        );
+      }
     }
 
-    // Create payment intent
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(lead.price * 100), // Convert to cents
-      currency: 'usd',
-      customer: stripeCustomerId,
-      payment_method: body.paymentMethodId,
-      confirm: true,
-      automatic_payment_methods: {
-        enabled: true,
-        allow_redirects: 'never',
-      },
-      metadata: {
-        leadId: lead.leadId,
-        agentId: agentId,
-        leadType: lead.leadType,
-        leadScore: lead.score.toString(),
-      },
-      description: `Lead purchase - ${lead.leadType} lead (Score: ${lead.score}/10)`,
-    });
+    // For assigned leads, no payment required (already paid for via round-robin)
 
     // Create transaction record
     const transactionId = uuidv4();
     const timestamp = new Date().toISOString();
+
+    const paymentStatus = paymentIntentId ? 'completed' : 'pending';
 
     const transaction: Transaction = {
       transactionId,
       timestamp,
       agentId,
       leadId: lead.leadId,
-      amount: lead.price,
+      amount: lead.price, // Charge full price for all leads
       score: lead.score,
-      stripePaymentIntentId: paymentIntent.id,
-      status: paymentIntent.status === 'succeeded' ? 'completed' : 'pending',
+      stripePaymentIntentId: paymentIntentId || undefined,
+      status: paymentStatus,
       createdAt: timestamp,
     };
 
     await DynamoDBService.putItem(config.TRANSACTIONS_TABLE_NAME, transaction);
 
-    // If payment succeeded immediately, update lead and agent
-    if (paymentIntent.status === 'succeeded') {
+    // Complete purchase for successful payments
+    if (paymentStatus === 'completed') {
       await completePurchase(lead.leadId, agentId, agent, lead);
     }
 
     return ResponseBuilder.success({
       transactionId,
-      paymentIntentId: paymentIntent.id,
-      status: paymentIntent.status,
+      paymentIntentId: paymentIntentId,
+      status: paymentStatus,
       amount: lead.price,
       lead: {
         leadId: lead.leadId,
         leadType: lead.leadType,
         score: lead.score,
-        // Return full contact info upon successful payment
-        contact: paymentIntent.status === 'succeeded' ? lead.contact : undefined,
-        location: paymentIntent.status === 'succeeded' ? lead.location : undefined,
+        // Return full contact info upon successful claim/purchase
+        contact: lead.contact,
+        location: lead.location,
       },
-      message:
-        paymentIntent.status === 'succeeded'
-          ? 'Lead purchased successfully'
-          : 'Payment processing',
+      message: 'Lead purchased successfully',
     });
   } catch (error: any) {
     console.error('Purchase lead error:', error);
@@ -370,11 +395,11 @@ async function handleRefund(charge: Stripe.Charge) {
 async function completePurchase(leadId: string, agentId: string, agent: any, lead: Lead) {
   const timestamp = new Date().toISOString();
 
-  // Update lead status to sold
+  // Update lead status to sold using the lead's actual timestamp
   await DynamoDBService.updateItem(
     config.LEADS_TABLE_NAME,
-    { leadId, timestamp: leadId },
-    'SET #status = :status, purchasedBy = :agentId, purchasedAt = :timestamp, GSI1PK = :gsi1pk',
+    { leadId, timestamp: lead.timestamp },
+    'SET #status = :status, claimedBy = :agentId, claimedAt = :timestamp, GSI1PK = :gsi1pk',
     {
       ':status': 'sold',
       ':agentId': agentId,

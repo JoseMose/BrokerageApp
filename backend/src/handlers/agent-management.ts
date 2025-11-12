@@ -15,6 +15,21 @@ export const handler = async (event: APIGatewayEvent) => {
 
     const agentId = RequestValidator.getUserId(event);
     const httpMethod = event.httpMethod;
+    const path = event.path;
+
+    // GET /agents/assigned-leads - Get assigned leads
+    if (httpMethod === 'GET' && path.includes('/assigned-leads')) {
+      return await getAssignedLeads(agentId);
+    }
+
+    // POST /agents/pass-lead/{leadId} - Pass lead to next agent
+    if (httpMethod === 'POST' && path.includes('/pass-lead/')) {
+      const leadId = event.pathParameters?.leadId;
+      if (!leadId) {
+        return ResponseBuilder.error('Lead ID required', 400);
+      }
+      return await passLeadToNext(agentId, leadId);
+    }
 
     // GET /agents - Get agent profile
     if (httpMethod === 'GET') {
@@ -95,6 +110,69 @@ async function getAgentProfile(agentId: string) {
     });
   } catch (error) {
     console.error('Get agent profile error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get agent's assigned leads (auto-assigned via round-robin)
+ */
+async function getAssignedLeads(agentId: string) {
+  try {
+    // Scan for leads assigned to this agent
+    // TODO: Add GSI on assignedTo for better performance
+    const leads = await DynamoDBService.scanItems(
+      config.LEADS_TABLE_NAME,
+      'assignedTo = :agentId AND #status = :status',
+      {
+        ':agentId': agentId,
+        ':status': 'assigned',
+      },
+      {
+        '#status': 'status',
+      }
+    );
+
+    // Filter out expired leads and format response
+    const now = Math.floor(Date.now() / 1000);
+    const activeLeads = leads
+      .filter((lead: any) => {
+        // Check if not expired
+        if (lead.expiresAt && lead.expiresAt < now) {
+          return false;
+        }
+        // Check if not already claimed
+        if (lead.claimedBy) {
+          return false;
+        }
+        return true;
+      })
+      .map((lead: any) => ({
+        leadId: lead.leadId,
+        leadType: lead.leadType,
+        score: lead.score,
+        price: lead.price,
+        aiReason: lead.aiReason,
+        contact: {
+          name: lead.contact?.name, // Show name for assigned leads
+        },
+        location: {
+          city: lead.location.city,
+          state: lead.location.state,
+          zip: lead.location.zip,
+        },
+        assignedAt: lead.assignedAt,
+        createdAt: lead.createdAt,
+        expiresAt: lead.expiresAt,
+        responses: lead.responses,
+      }));
+
+    return ResponseBuilder.success({
+      leads: activeLeads,
+      total: activeLeads.length,
+    });
+  } catch (error) {
+    console.error('Get assigned leads error:', error);
     throw error;
   }
 }
@@ -317,4 +395,166 @@ async function updateAgentProfile(agentId: string, event: APIGatewayEvent) {
     console.error('Update agent profile error:', error);
     throw error;
   }
+}
+
+/**
+ * Pass an assigned lead to the next agent in round-robin
+ */
+async function passLeadToNext(currentAgentId: string, leadId: string) {
+  try {
+    // Get the lead
+    const leads = await DynamoDBService.scanItems(
+      config.LEADS_TABLE_NAME,
+      'leadId = :leadId AND #status = :assigned',
+      { ':leadId': leadId, ':assigned': 'assigned' },
+      { '#status': 'status' }
+    );
+
+    if (!leads || leads.length === 0) {
+      return ResponseBuilder.notFound('Lead not found or not assigned');
+    }
+
+    const lead = leads[0];
+
+    // Verify this lead is assigned to the current agent
+    if (lead.assignedTo !== currentAgentId) {
+      return ResponseBuilder.forbidden('You can only pass leads assigned to you');
+    }
+
+    // Get all active agents (same logic as round-robin)
+    const allAgents = await DynamoDBService.scanItems(
+      config.AGENTS_TABLE_NAME,
+      '#status = :active AND SK = :profile',
+      { ':active': 'active', ':profile': 'profile' },
+      { '#status': 'status', 'SK': 'SK' }
+    );
+
+    if (!allAgents || allAgents.length === 0) {
+      return ResponseBuilder.error('No active agents available', 400);
+    }
+
+    // Filter eligible agents (same criteria as original assignment)
+    const eligibleAgents = allAgents.filter((agent: any) => {
+      // Exclude current agent
+      if (agent.agentId === currentAgentId) {
+        return false;
+      }
+
+      // Check lead type preference
+      if (!agent.preferences?.leadTypes?.includes(lead.leadType)) {
+        return false;
+      }
+
+      // Check distance
+      if (agent.location?.lat && agent.location?.lng && lead.location?.lat && lead.location?.lng) {
+        const distance = calculateDistance(
+          agent.location.lat,
+          agent.location.lng,
+          lead.location.lat,
+          lead.location.lng
+        );
+        const maxRadius = agent.radius || 50;
+        if (distance > maxRadius) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    if (eligibleAgents.length === 0) {
+      // No other eligible agents - unassign and make available in marketplace
+      await DynamoDBService.updateItem(
+        config.LEADS_TABLE_NAME,
+        { leadId: lead.leadId, timestamp: lead.timestamp },
+        'SET #status = :available, assignedTo = :null, assignedAt = :null, GSI1PK = :gsi1pk',
+        {
+          ':available': 'available',
+          ':null': null,
+          ':gsi1pk': `available#${lead.leadType}`,
+        },
+        { '#status': 'status' }
+      );
+
+      return ResponseBuilder.success({
+        message: 'No other eligible agents found. Lead moved to marketplace.',
+        lead: { leadId: lead.leadId, status: 'available' },
+      });
+    }
+
+    // Sort by lastAssignedAt (oldest first)
+    eligibleAgents.sort((a: any, b: any) => {
+      const aTime = a.lastAssignedAt ? new Date(a.lastAssignedAt).getTime() : 0;
+      const bTime = b.lastAssignedAt ? new Date(b.lastAssignedAt).getTime() : 0;
+      return aTime - bTime;
+    });
+
+    const nextAgent = eligibleAgents[0];
+    const now = new Date().toISOString();
+
+    // Update lead assignment
+    await DynamoDBService.updateItem(
+      config.LEADS_TABLE_NAME,
+      { leadId: lead.leadId, timestamp: lead.timestamp },
+      'SET assignedTo = :agentId, assignedAt = :now, GSI1PK = :gsi1pk',
+      {
+        ':agentId': nextAgent.agentId,
+        ':now': now,
+        ':gsi1pk': `assigned#${lead.leadType}`,
+      }
+    );
+
+    // Update next agent's lastAssignedAt
+    await DynamoDBService.updateItem(
+      config.AGENTS_TABLE_NAME,
+      { agentId: nextAgent.agentId, SK: 'profile' },
+      'SET lastAssignedAt = :now, assignedLeadsCount = if_not_exists(assignedLeadsCount, :zero) + :one',
+      {
+        ':now': now,
+        ':zero': 0,
+        ':one': 1,
+      }
+    );
+
+    // Decrement current agent's assignedLeadsCount
+    await DynamoDBService.updateItem(
+      config.AGENTS_TABLE_NAME,
+      { agentId: currentAgentId, SK: 'profile' },
+      'SET assignedLeadsCount = if_not_exists(assignedLeadsCount, :one) - :one',
+      { ':one': 1 }
+    );
+
+    console.log(`Lead ${leadId} passed from ${currentAgentId} to ${nextAgent.agentId}`);
+
+    return ResponseBuilder.success({
+      message: `Lead successfully passed to next agent`,
+      lead: {
+        leadId: lead.leadId,
+        newAssignee: nextAgent.agentId,
+        assignedAt: now,
+      },
+    });
+  } catch (error) {
+    console.error('Pass lead error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Calculate distance between two coordinates using Haversine formula
+ * Returns distance in miles
+ */
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 3959; // Earth's radius in miles
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function toRad(degrees: number): number {
+  return (degrees * Math.PI) / 180;
 }

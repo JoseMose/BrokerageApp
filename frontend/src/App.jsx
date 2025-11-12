@@ -14,6 +14,7 @@ import PurchaseHistory from './pages/PurchaseHistory';
 import AdminDashboard from './pages/AdminDashboard';
 import LandingPage from './pages/LandingPage';
 import RealtorAuth from './pages/RealtorAuth';
+import BulkLeads from './pages/BulkLeads';
 
 // Protected Route wrapper
 function ProtectedRoute({ children }) {
@@ -48,7 +49,7 @@ function ProtectedRoute({ children }) {
 
 function App() {
   return (
-    <Router>
+    <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={<LandingPage />} />
@@ -133,6 +134,23 @@ function App() {
                     <Navigation user={user} signOut={signOut} />
                     <main className="main-content">
                       <PurchaseHistory />
+                    </main>
+                  </div>
+                )}
+              </Authenticator>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/bulk-leads"
+          element={
+            <ProtectedRoute>
+              <Authenticator>
+                {({ signOut, user }) => (
+                  <div className="app">
+                    <Navigation user={user} signOut={signOut} />
+                    <main className="main-content">
+                      <BulkLeads />
                     </main>
                   </div>
                 )}

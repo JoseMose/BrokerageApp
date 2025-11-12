@@ -32,6 +32,8 @@ export const agentAPI = {
   getProfile: () => apiClient.get('/agents'),
   createProfile: (data) => apiClient.post('/agents', data),
   updateProfile: (data) => apiClient.put('/agents', data),
+  getAssignedLeads: () => apiClient.get('/agents/assigned-leads'),
+  passLead: (leadId) => apiClient.post(`/agents/pass-lead/${leadId}`),
 };
 
 // Marketplace APIs
@@ -61,32 +63,11 @@ export const submitLead = async (formData) => {
       },
     });
     
-    const response = await publicClient.post('/create-lead', {
-      leadType: formData.leadType,
-      contact: {
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone.replace(/\D/g, ''), // Remove formatting
-      },
-      location: {
-        address: formData.address,
-        city: formData.city,
-        state: formData.state,
-        zipCode: formData.zipCode,
-      },
-      responses: {
-        // Buyer-specific
-        buyingTimeline: formData.buyingTimeline || null,
-        preApproved: formData.preApproved,
-        priceRange: formData.priceRange || null,
-        
-        // Seller-specific
-        sellingTimeline: formData.sellingTimeline || null,
-        hasListedBefore: formData.hasListedBefore,
-        estimatedValue: formData.estimatedValue || null,
-        propertyType: formData.propertyType || null,
-      }
-    });
+    console.log('Submitting lead with payload:', formData);
+    
+    const response = await publicClient.post('/create-lead', formData);
+    
+    console.log('Lead submission response:', response.data);
     
     return {
       success: true,
@@ -94,9 +75,10 @@ export const submitLead = async (formData) => {
     };
   } catch (error) {
     console.error('Lead submission error:', error);
+    console.error('Error response:', error.response?.data);
     return {
       success: false,
-      message: error.response?.data?.message || 'Failed to submit lead. Please try again.'
+      message: error.response?.data?.message || error.response?.data?.details?.join(', ') || 'Failed to submit lead. Please try again.'
     };
   }
 };
@@ -108,6 +90,15 @@ export const adminAPI = {
   getAgents: (params) => apiClient.get('/admin', { params: { action: 'agents', ...params } }),
   getTransactions: (params) => apiClient.get('/admin', { params: { action: 'transactions', ...params } }),
   performAction: (data) => apiClient.post('/admin', data),
+  // Bulk packages
+  createBulkPackage: (data) => apiClient.post('/admin/bulk-packages', data),
+  getAllPackages: () => apiClient.get('/admin/bulk-packages'),
+};
+
+// Bulk Packages APIs
+export const bulkPackagesAPI = {
+  getAvailablePackages: () => apiClient.get('/bulk-packages'),
+  purchasePackage: (packageId) => apiClient.post(`/bulk-packages/${packageId}/purchase`),
 };
 
 export default apiClient;
