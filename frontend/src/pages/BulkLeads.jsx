@@ -202,6 +202,7 @@ const BulkLeads = () => {
   };
 
   const handlePurchase = (pkg) => {
+    console.log('Purchase clicked for package:', pkg);
     setSelectedPackage(pkg);
     setError(null);
   };
