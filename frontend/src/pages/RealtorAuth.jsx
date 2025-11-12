@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Authenticator } from '@aws-amplify/ui-react';
 import { getCurrentUser } from 'aws-amplify/auth';
@@ -7,15 +7,23 @@ import './RealtorAuth.css';
 
 function RealtorAuth() {
   const navigate = useNavigate();
+  const [authUser, setAuthUser] = useState(null);
 
   useEffect(() => {
     checkIfAuthenticated();
   }, []);
 
+  // Redirect when user is authenticated
+  useEffect(() => {
+    if (authUser) {
+      navigate('/dashboard');
+    }
+  }, [authUser, navigate]);
+
   const checkIfAuthenticated = async () => {
     try {
-      await getCurrentUser();
-      navigate('/dashboard');
+      const user = await getCurrentUser();
+      setAuthUser(user);
     } catch (error) {
       // Not authenticated, stay on this page
     }
@@ -56,9 +64,9 @@ function RealtorAuth() {
           }}
         >
           {({ signOut, user }) => {
-            // Once authenticated, redirect to dashboard
-            if (user) {
-              navigate('/dashboard');
+            // Set user state when authenticated
+            if (user && !authUser) {
+              setAuthUser(user);
             }
             return null;
           }}
