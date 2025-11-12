@@ -162,6 +162,12 @@ async function createBulkPackage() {
   }
   
   console.log('\nCreating bulk package record...');
+  
+  const regularPrice = bulkLeads.length * 80; // $80 per lead regular price
+  const totalPrice = 50;
+  const discount = regularPrice - totalPrice;
+  const discountPercent = Math.round((discount / regularPrice) * 100);
+  
   await ddb.send(new PutCommand({
     TableName: 'RealtorLeads',
     Item: {
@@ -172,8 +178,11 @@ async function createBulkPackage() {
       packageId,
       leadCount: bulkLeads.length,
       leadIds,
-      totalPrice: 50,
+      totalPrice,
       pricePerLead: 10,
+      regularPrice,
+      discount,
+      discountPercent,
       averageScore: 2.8,
       scoreRange: { min: 2, max: 4 },
       createdAt: now,
@@ -184,7 +193,7 @@ async function createBulkPackage() {
     }
   }));
   
-  console.log(`✅ Created bulk package: ${bulkLeads.length} leads for $50`);
+  console.log(`✅ Created bulk package: ${bulkLeads.length} leads for $${totalPrice} (${discountPercent}% off)`);
 }
 
 async function main() {
