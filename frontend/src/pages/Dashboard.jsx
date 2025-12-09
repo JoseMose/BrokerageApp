@@ -36,7 +36,11 @@ function Dashboard() {
   const [purchases, setPurchases] = useState([]);
   const [leadActivities, setLeadActivities] = useState({});
   const [recommendations, setRecommendations] = useState([]);
-  const [lastAIRun, setLastAIRun] = useState(null);
+  const [lastAIRun, setLastAIRun] = useState(() => {
+    // CRITICAL: Load from localStorage on mount to prevent multiple AI calls
+    const cached = localStorage.getItem('aiRecommendationsTime');
+    return cached ? new Date(cached) : null;
+  });
   const [lastActivityHash, setLastActivityHash] = useState('');
 
   useEffect(() => {
@@ -138,6 +142,9 @@ function Dashboard() {
         p => p.lead?.leadType !== 'bulk-package' && !p.transaction?.leadId?.startsWith('package#')
       );
       setPurchases(individualLeads);
+      
+      // CRITICAL: Try to load cached recommendations FIRST
+      loadCachedRecommendations();
       
       // ⚠️ CRITICAL: AI ONLY runs at 8 AM daily - NO OTHER TRIGGERS
       if (shouldRunAI()) {
