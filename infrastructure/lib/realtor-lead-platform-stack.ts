@@ -390,6 +390,19 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       description: 'Handles admin operations and analytics',
     });
 
+    // AI Recommendations Lambda (daily 8 AM only)
+    const aiRecommendationsFunction = new lambda.Function(this, 'AIRecommendationsFunction', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      functionName: 'RealtorAIRecommendations',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/dist/ai-recommendations')),
+      handler: 'index.handler',
+      timeout: cdk.Duration.seconds(60),
+      memorySize: 1024,
+      role: lambdaRole,
+      environment: commonEnvironment,
+      description: 'AI-powered daily lead recommendations using Bedrock (8 AM only)',
+    });
+
     // ============================================
     // STEP FUNCTIONS
     // ============================================
@@ -535,6 +548,17 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
     passLeadByIdResource.addMethod(
       'POST',
       new apigateway.LambdaIntegration(agentManagementFunction),
+      {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // AI Recommendations endpoint (daily 8 AM only)
+    const aiRecommendationsResource = agentsResource.addResource('ai-recommendations');
+    aiRecommendationsResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(aiRecommendationsFunction),
       {
         authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,

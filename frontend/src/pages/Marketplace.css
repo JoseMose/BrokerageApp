@@ -43,6 +43,14 @@
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+.lead-card-buyer {
+  border-left: 4px solid #3A7DFF; /* Electric blue for buyers */
+}
+
+.lead-card-seller {
+  border-left: 4px solid #10B981; /* Emerald green for sellers */
+}
+
 .lead-card:hover {
   transform: translateY(-4px);
   box-shadow: var(--shadow-lg);
@@ -75,6 +83,14 @@
   text-align: center;
 }
 
+.score-section-buyer {
+  background: linear-gradient(135deg, #EBF4FF 0%, #D6E9FF 100%); /* Light blue gradient for buyers */
+}
+
+.score-section-seller {
+  background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%); /* Light emerald gradient for sellers */
+}
+
 .score-display-inline {
   display: inline-flex;
   align-items: baseline;
@@ -85,6 +101,14 @@
   font-size: 3rem;
   font-weight: 700;
   color: var(--primary-color);
+}
+
+.score-buyer {
+  color: #3A7DFF; /* Electric blue for buyer scores */
+}
+
+.score-seller {
+  color: #10B981; /* Emerald green for seller scores */
 }
 
 .score-small {
@@ -104,6 +128,14 @@
   background-color: var(--bg-secondary);
   border-radius: 6px;
   border-left: 4px solid var(--primary-color);
+}
+
+.lead-reason-buyer {
+  border-left-color: #3A7DFF; /* Electric blue for buyer reasons */
+}
+
+.lead-reason-seller {
+  border-left-color: #10B981; /* Emerald green for seller reasons */
 }
 
 .lead-details {

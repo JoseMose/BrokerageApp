@@ -146,6 +146,9 @@ exports.handler = async (event) => {
       // Questionnaire responses
       responses: body.responses,
       
+      // Behavioral telemetry (if provided)
+      behaviorMetrics: body.behaviorMetrics || null,
+      
       // Metadata
       createdAt: now,
       expiresAt: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60), // 30 days from now
@@ -391,24 +394,41 @@ async function calculateLeadScore(leadData) {
  * Build AI scoring prompt
  */
 function buildScoringPrompt(leadData) {
-  const { leadType, responses, location } = leadData;
+  const { leadType, responses, location, behaviorMetrics } = leadData;
+  
+  // Add behavioral insights if available
+  let behaviorContext = '';
+  if (behaviorMetrics?.behavior_summary) {
+    const flags = [];
+    if (behaviorMetrics.behavior_summary.fast_filler) flags.push('completed quickly');
+    if (behaviorMetrics.behavior_summary.hesitant) flags.push('hesitant/edited answers');
+    if (behaviorMetrics.behavior_summary.likely_bot) flags.push('possible bot');
+    if (flags.length > 0) {
+      behaviorContext = `\nBehavior: ${flags.join(', ')}`;
+    }
+  }
   
   if (leadType === 'buyer') {
     return `Score this home buyer lead from 1-10 (10 being best):
-- Timeline: ${responses.buyingTimeline}
-- Pre-approved: ${responses.preApproved ? 'Yes' : 'No'}
+- Motivation: ${responses.motivation || 'Not specified'}
+- Timeline: ${responses.buyingTimeline || responses.timeline || 'Not specified'}
+- Pre-approved: ${responses.preApproved || 'Unknown'}
 - Price range: ${responses.priceRange || 'Not specified'}
-- Location: ${location.city}, ${location.state}
+- Current situation: ${responses.rentingOrSelling || 'Not specified'}
+- Earnest money ready: ${responses.earnestMoney || 'Not specified'}
+- Location: ${location.city}, ${location.state}${behaviorContext}
 
-Consider urgency, financial readiness, and seriousness. Return only a number 1-10.`;
+Consider urgency, financial readiness, seriousness, and behavior patterns. Return only a number 1-10.`;
   } else {
     return `Score this home seller lead from 1-10 (10 being best):
-- Timeline: ${responses.sellingTimeline}
-- Listed before: ${responses.hasListedBefore ? 'Yes' : 'No'}
+- Motivation: ${responses.motivation || 'Not specified'}
+- Timeline: ${responses.sellingTimeline || responses.timeline || 'Not specified'}
 - Estimated value: ${responses.estimatedValue || 'Not specified'}
-- Location: ${location.city}, ${location.state}
+- Occupancy status: ${responses.occupiedStatus || 'Not specified'}
+- Major repairs needed: ${responses.majorRepairs || 'Not specified'}
+- Location: ${location.city}, ${location.state}${behaviorContext}
 
-Consider urgency, property value, and experience. Return only a number 1-10.`;
+Consider urgency, property value, condition, and behavior patterns. Return only a number 1-10.`;
   }
 }
 
@@ -435,11 +455,14 @@ function calculateLeadPrice(score, leadType) {
  * Generate AI reason/summary
  */
 async function generateAIReason(leadData, score) {
+  const { leadType, responses, location } = leadData;
+  
   const prompt = `Summarize this real estate lead in one sentence (max 80 chars):
-Lead type: ${leadData.leadType}
-Timeline: ${leadData.responses.buyingTimeline || leadData.responses.sellingTimeline}
+Lead type: ${leadType}
+Motivation: ${responses.motivation || 'N/A'}
+Timeline: ${responses.buyingTimeline || responses.sellingTimeline || responses.timeline}
 Score: ${score}/10
-Location: ${leadData.location.city}, ${leadData.location.state}
+Location: ${location.city}, ${location.state}
 
 Be concise and highlight the key strength.`;
   

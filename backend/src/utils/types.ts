@@ -1,5 +1,24 @@
 // Database Models
 
+export interface BehaviorMetrics {
+  timing_metrics?: {
+    [key: string]: number; // step_X_time_ms, step_X_typing_ms, total_form_time_ms
+  };
+  interaction_metrics?: {
+    edits_count?: Record<string, number>;
+    focus_events?: number;
+    copy_paste_flag?: boolean;
+    device_type?: string;
+    user_agent?: string;
+    screen_size?: string;
+  };
+  behavior_summary?: {
+    fast_filler?: boolean;
+    hesitant?: boolean;
+    likely_bot?: boolean;
+  };
+}
+
 export interface Lead {
   leadId: string;
   timestamp: string;
@@ -21,6 +40,7 @@ export interface Lead {
     zip: string;
   };
   responses: Record<string, any>;
+  behaviorMetrics?: BehaviorMetrics | null; // Behavioral telemetry data
   aiReason: string;
   createdAt: string;
   expiresAt: string;
@@ -101,6 +121,7 @@ export interface LeadSubmissionRequest {
     zip: string;
   };
   responses: Record<string, any>;
+  behaviorMetrics?: BehaviorMetrics; // Optional behavioral telemetry
 }
 
 export interface AIScoreResponse {

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import LeadForm from '../components/LeadForm';
+import DifferenceSection from '../components/DifferenceSection';
 
 const LandingPage = () => {
   const [showForm, setShowForm] = useState(false);
@@ -92,6 +93,9 @@ const LandingPage = () => {
           </div>
         </div>
       </section>
+
+      {/* Difference Section - Why We're Different */}
+      <DifferenceSection />
 
       {/* How Our AI Works Section */}
       <section className="py-20 bg-white">

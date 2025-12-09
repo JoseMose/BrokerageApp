@@ -165,6 +165,9 @@ const BulkLeads = () => {
   const [selectedPackage, setSelectedPackage] = useState(null);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
+  const [availableLowScoreLeads, setAvailableLowScoreLeads] = useState(0);
+  const [customLeadCount, setCustomLeadCount] = useState(0);
+  const [showCustomPackage, setShowCustomPackage] = useState(false);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -185,6 +188,10 @@ const BulkLeads = () => {
       if (!signal?.aborted) {
         const pkgs = response.data.packages || response.data.data?.packages || [];
         setPackages(pkgs);
+        
+        // Get count of low-score leads (4 or below)
+        const lowScoreCount = response.data.availableLowScoreLeads || 0;
+        setAvailableLowScoreLeads(lowScoreCount);
       }
     } catch (err) {
       if (err.code === 'ECONNABORTED' || err.code === 'ERR_CANCELED') {
@@ -204,6 +211,35 @@ const BulkLeads = () => {
   const handlePurchase = (pkg) => {
     console.log('Purchase clicked for package:', pkg);
     setSelectedPackage(pkg);
+    setError(null);
+  };
+
+  const calculatePricePerLead = (leadCount) => {
+    // Bulk discount tiers
+    if (leadCount === 0) return 0;  // No leads selected
+    if (leadCount >= 100) return 10;  // 87.5% off ($80 -> $10)
+    if (leadCount >= 50) return 20;   // 75% off ($80 -> $20)
+    if (leadCount >= 25) return 30;   // 62.5% off ($80 -> $30)
+    if (leadCount >= 10) return 40;   // 50% off ($80 -> $40)
+    return 80; // Regular price for 1-9 leads
+  };
+
+  const calculateDiscount = (leadCount) => {
+    const pricePerLead = calculatePricePerLead(leadCount);
+    return Math.round(((80 - pricePerLead) / 80) * 100);
+  };
+
+  const handleCustomPackagePurchase = () => {
+    const customPkg = {
+      packageId: `custom-${Date.now()}`,
+      leadCount: customLeadCount,
+      pricePerLead: calculatePricePerLead(customLeadCount),
+      totalPrice: customLeadCount * calculatePricePerLead(customLeadCount),
+      discountPercent: calculateDiscount(customLeadCount),
+      description: 'Custom bulk package (Score 4 or below)',
+      isCustom: true
+    };
+    setSelectedPackage(customPkg);
     setError(null);
   };
 
@@ -268,6 +304,92 @@ const BulkLeads = () => {
           {successMessage}
         </div>
       )}
+
+      {/* Custom Package Builder */}
+      <div className="custom-package-section">
+        <div className="custom-package-header">
+          <div className="custom-header-content">
+            <h2>🎯 Custom Bulk Package</h2>
+            <p className="low-score-count">
+              <strong>{availableLowScoreLeads}</strong> leads with score 4 or below available
+            </p>
+          </div>
+          <button 
+            className="btn btn-outline"
+            onClick={() => setShowCustomPackage(!showCustomPackage)}
+          >
+            {showCustomPackage ? 'Hide Builder' : 'Build Custom Package'}
+          </button>
+        </div>
+
+        {showCustomPackage && (
+          <div className="custom-package-builder">
+            <div className="builder-content">
+              <div className="slider-section">
+                <label htmlFor="lead-count-slider" className="slider-label">
+                  How many leads do you want?
+                </label>
+                <div className="slider-value-display">
+                  <span className="lead-count-badge">{customLeadCount} Leads</span>
+                </div>
+                <input
+                  id="lead-count-slider"
+                  type="range"
+                  min="0"
+                  max={Math.min(availableLowScoreLeads, 200)}
+                  step="5"
+                  value={customLeadCount}
+                  onChange={(e) => setCustomLeadCount(parseInt(e.target.value))}
+                  className="lead-count-slider"
+                  disabled={availableLowScoreLeads === 0}
+                />
+                <div className="slider-range">
+                  <span>0</span>
+                  <span>{Math.min(availableLowScoreLeads, 200)}</span>
+                </div>
+              </div>
+
+              <div className="custom-pricing">
+                <div className="pricing-row">
+                  <span>Price per lead:</span>
+                  <strong>{formatCurrency(calculatePricePerLead(customLeadCount))}</strong>
+                </div>
+                <div className="pricing-row">
+                  <span>Regular price:</span>
+                  <span className="strikethrough">{formatCurrency(customLeadCount * 80)}</span>
+                </div>
+                <div className="pricing-row discount-row">
+                  <span>Discount:</span>
+                  <strong className="discount-text">-{calculateDiscount(customLeadCount)}%</strong>
+                </div>
+                <div className="pricing-row total-row">
+                  <span>Total:</span>
+                  <strong className="total-price">{formatCurrency(customLeadCount * calculatePricePerLead(customLeadCount))}</strong>
+                </div>
+                <div className="pricing-row savings-row">
+                  <span>You save:</span>
+                  <strong className="savings-amount">
+                    {formatCurrency((customLeadCount * 80) - (customLeadCount * calculatePricePerLead(customLeadCount)))}
+                  </strong>
+                </div>
+              </div>
+
+              <button
+                className="btn btn-primary btn-large"
+                onClick={() => handleCustomPackagePurchase()}
+                disabled={availableLowScoreLeads === 0 || customLeadCount === 0}
+              >
+                {availableLowScoreLeads === 0 
+                  ? 'No Leads Available' 
+                  : customLeadCount === 0
+                  ? 'Select Lead Quantity'
+                  : `Purchase ${customLeadCount} Leads - ${formatCurrency(customLeadCount * calculatePricePerLead(customLeadCount))}`
+                }
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {packages.length === 0 ? (
         <div className="empty-state">

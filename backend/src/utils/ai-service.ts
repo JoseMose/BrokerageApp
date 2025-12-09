@@ -2,7 +2,7 @@ import {
   BedrockRuntimeClient,
   ConverseCommand,
 } from '@aws-sdk/client-bedrock-runtime';
-import { getConfig, AIScoreResponse } from './types';
+import { getConfig, AIScoreResponse, BehaviorMetrics } from './types';
 
 const config = getConfig();
 const bedrockClient = new BedrockRuntimeClient({ region: config.AWS_REGION });
@@ -15,6 +15,7 @@ export interface ScoringPromptData {
     email: string;
     phone: string;
   };
+  behaviorMetrics?: BehaviorMetrics | null;
 }
 
 export class AIService {
@@ -96,7 +97,32 @@ Your response MUST be valid JSON with this exact structure:
    * Buyer-specific scoring prompt
    */
   private static getBuyerPrompt(data: ScoringPromptData): string {
-    const { responses, contact } = data;
+    const { responses, contact, behaviorMetrics } = data;
+
+    let behaviorSection = '';
+    if (behaviorMetrics) {
+      const behaviors = [];
+      if (behaviorMetrics.behavior_summary?.fast_filler) {
+        behaviors.push('Completed form very quickly (possible low engagement)');
+      }
+      if (behaviorMetrics.behavior_summary?.hesitant) {
+        behaviors.push('Made multiple edits to answers (thoughtful or uncertain)');
+      }
+      if (behaviorMetrics.behavior_summary?.likely_bot) {
+        behaviors.push('WARNING: Possible bot activity detected');
+      }
+      if (behaviorMetrics.interaction_metrics?.copy_paste_flag) {
+        behaviors.push('Used copy/paste (possible duplicate submission)');
+      }
+      if (behaviorMetrics.timing_metrics?.total_form_time_ms) {
+        const minutes = Math.round(behaviorMetrics.timing_metrics.total_form_time_ms / 60000);
+        behaviors.push(`Total time spent: ${minutes} minute(s)`);
+      }
+      
+      if (behaviors.length > 0) {
+        behaviorSection = `\n\nBehavioral Analysis:\n${behaviors.map(b => `- ${b}`).join('\n')}`;
+      }
+    }
 
     return `BUYER LEAD ANALYSIS
 
@@ -108,19 +134,19 @@ Contact Information:
 Buyer Details:
 ${Object.entries(responses)
   .map(([key, value]) => `- ${key}: ${JSON.stringify(value)}`)
-  .join('\n')}
+  .join('\n')}${behaviorSection}
 
 Scoring Factors to Consider:
 1. Pre-approval Status (Critical): Is the buyer pre-approved? Pre-approved = higher score
 2. Budget Clarity: Do they have a clear budget and price range?
-3. Timeline: How soon are they looking to buy? (30-60 days = high, 6+ months = low)
-4. Motivation: Why are they buying? (Urgent relocation = high, just browsing = low)
-5. Down Payment: Do they have funds ready?
-6. Current Housing: Are they renting (easier) or need to sell first (complex) or first home buyers?
+3. Timeline: How soon are they looking to buy? (ASAP/1-3 months = high, 6+ months = low)
+4. Motivation: Why are they buying? (first-home, relocating, upgrading, etc.)
+5. Earnest Money: Do they have funds ready?
+6. Current Housing: Are they renting (easier) or need to sell first (complex)?
 7. Property Preferences: Are their requirements specific and realistic?
 8. Communication Quality: Are responses detailed and thoughtful?
-9. Employment Stability: Stable income source?
-10. First-time Buyer: May need more education (slightly lower initial score)
+9. Behavioral Signals: Consider engagement patterns, hesitation, completion time
+10. Bot Detection: Reduce score significantly if bot-like behavior detected
 
 Provide your JSON response now:`;
   }
@@ -129,7 +155,32 @@ Provide your JSON response now:`;
    * Seller-specific scoring prompt
    */
   private static getSellerPrompt(data: ScoringPromptData): string {
-    const { responses, contact } = data;
+    const { responses, contact, behaviorMetrics } = data;
+
+    let behaviorSection = '';
+    if (behaviorMetrics) {
+      const behaviors = [];
+      if (behaviorMetrics.behavior_summary?.fast_filler) {
+        behaviors.push('Completed form very quickly (possible low engagement)');
+      }
+      if (behaviorMetrics.behavior_summary?.hesitant) {
+        behaviors.push('Made multiple edits to answers (thoughtful or uncertain)');
+      }
+      if (behaviorMetrics.behavior_summary?.likely_bot) {
+        behaviors.push('WARNING: Possible bot activity detected');
+      }
+      if (behaviorMetrics.interaction_metrics?.copy_paste_flag) {
+        behaviors.push('Used copy/paste (possible duplicate submission)');
+      }
+      if (behaviorMetrics.timing_metrics?.total_form_time_ms) {
+        const minutes = Math.round(behaviorMetrics.timing_metrics.total_form_time_ms / 60000);
+        behaviors.push(`Total time spent: ${minutes} minute(s)`);
+      }
+      
+      if (behaviors.length > 0) {
+        behaviorSection = `\n\nBehavioral Analysis:\n${behaviors.map(b => `- ${b}`).join('\n')}`;
+      }
+    }
 
     return `SELLER LEAD ANALYSIS
 
@@ -141,19 +192,19 @@ Contact Information:
 Seller Details:
 ${Object.entries(responses)
   .map(([key, value]) => `- ${key}: ${JSON.stringify(value)}`)
-  .join('\n')}
+  .join('\n')}${behaviorSection}
 
 Scoring Factors to Consider:
-1. Timeline to Sell (Critical): How soon do they need to sell? (30-60 days = high, undecided = low)
-2. Motivation: Why selling? (Job relocation/divorce = high, just curious = low)
-3. Property Ownership: How long have they owned? (Enough equity built?)
-4. Current Mortgage Status: Is it paid off or significant equity available?
-5. Property Condition: Move-in ready (high) or needs major work (lower)?
+1. Timeline to Sell (Critical): How soon do they need to sell? (ASAP/1-3 months = high, 6+ months = low)
+2. Motivation: Why selling? (relocating, financial, inherited = varied urgency)
+3. Property Condition: Move-in ready/minor repairs (high) vs major repairs needed (lower)
+4. Estimated Value: Realistic property value expectations
+5. Occupancy Status: Owner-occupied, tenant, or vacant
 6. Pricing Expectations: Are they realistic about market value?
-7. Already Working with Agent?: If not, they're a fresh lead
-8. Where Moving To?: Lined up (high urgency) or uncertain (lower)
-9. Property Type: Single-family (easier) vs unique property (complex)
-10. Communication Quality: Detailed responses indicate serious intent
+7. Already Working with Agent?: Fresh lead vs already engaged
+8. Property Type: Straightforward sale vs complex situation
+9. Communication Quality: Detailed responses indicate serious intent
+10. Behavioral Signals: Consider engagement patterns and bot detection
 
 Provide your JSON response now:`;
   }

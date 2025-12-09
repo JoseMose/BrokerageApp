@@ -188,9 +188,23 @@ async function getAvailablePackages(agentId: string) {
       return !pkg.expiresAt || pkg.expiresAt > now;
     });
 
+    // Count available low-score leads (score 4 or below, not claimed)
+    const lowScoreLeads = await DynamoDBService.scanItems(
+      config.LEADS_TABLE_NAME,
+      '#status = :available AND score <= :maxScore',
+      {
+        ':available': 'available',
+        ':maxScore': 4,
+      },
+      {
+        '#status': 'status',
+      }
+    );
+
     return ResponseBuilder.success({
       packages: activePackages,
       total: activePackages.length,
+      availableLowScoreLeads: lowScoreLeads.length,
     });
   } catch (error) {
     console.error('Get available packages error:', error);

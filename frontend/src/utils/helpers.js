@@ -100,3 +100,139 @@ export const formatPhoneNumber = (phone) => {
   }
   return phone;
 };
+
+/**
+ * Format field labels for professional display
+ */
+export const formatFieldLabel = (field) => {
+  const labelMap = {
+    leadType: 'Lead Type',
+    motivation: 'Motivation',
+    timeline: 'Timeline',
+    location: 'Location',
+    preApproved: 'Pre-Approval Status',
+    priceRange: 'Budget Range',
+    rentingOrSelling: 'Current Housing Situation',
+    earnestMoney: 'Earnest Money Ready',
+    estimatedValue: 'Estimated Property Value',
+    occupiedStatus: 'Occupancy Status',
+    majorRepairs: 'Repairs Needed',
+    hasRealtor: 'Working with Realtor',
+    name: 'Name',
+    email: 'Email',
+    phone: 'Phone',
+    // Legacy fields that might appear in old leads
+    cashBuyer: 'Cash Buyer',
+    budget: 'Budget',
+    immediate: 'Timeline',
+    propertyValue: 'Property Value'
+  };
+  
+  // If we have a mapped label, use it
+  if (labelMap[field]) {
+    return labelMap[field];
+  }
+  
+  // Otherwise, convert camelCase to Title Case
+  return field
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, (str) => str.toUpperCase())
+    .trim();
+};
+
+/**
+ * Format field values for professional display (no quotes)
+ */
+export const formatFieldValue = (field, value) => {
+  if (value === null || value === undefined || value === '') {
+    return 'Not specified';
+  }
+
+  // Handle boolean values
+  if (typeof value === 'boolean') {
+    return value ? 'Yes' : 'No';
+  }
+
+  // Handle objects (should be rare, but just in case)
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return 'Multiple values';
+  }
+
+  // Handle arrays
+  if (Array.isArray(value)) {
+    return value.join(', ');
+  }
+
+  // Map common values to readable text
+  const valueMap = {
+    // Lead type
+    buyer: 'Buying a home',
+    seller: 'Selling a home',
+    
+    // Motivation
+    'first-home': 'Buying my first home',
+    relocating: 'Relocating for work/family',
+    upgrading: 'Upgrading to a bigger home',
+    downsizing: 'Downsizing/Empty nester',
+    investment: 'Investment/rental property',
+    financial: 'Financial reasons',
+    inherited: 'Inherited property',
+    'investment-exit': 'Selling investment property',
+    divorce: 'Divorce/Life changes',
+    other: 'Other reasons',
+    
+    // Timeline
+    asap: 'ASAP (Ready now)',
+    immediate: 'ASAP (Ready now)',
+    '1-3-months': 'Within 1-3 months',
+    '3-6-months': 'Within 3-6 months',
+    '6-plus-months': '6+ months',
+    
+    // Pre-approval
+    yes: 'Yes',
+    'not-yet': 'Not yet, but working on it',
+    no: 'No',
+    
+    // Price/Value ranges
+    '0-200k': 'Under $200k',
+    '200k-400k': '$200k - $400k',
+    '400k-600k': '$400k - $600k',
+    '600k-1m': '$600k - $1M',
+    '1m-plus': '$1M+',
+    '500000+': '$500k+',
+    flexible: 'Flexible',
+    'not-sure': 'Not sure',
+    
+    // Renting/Selling
+    renting: 'Currently renting',
+    'selling-first': 'Need to sell my home first',
+    'first-time': 'First-time buyer',
+    
+    // Occupancy
+    owner: 'Owner-occupied (I live here)',
+    tenant: 'Tenant-occupied (rental)',
+    vacant: 'Vacant',
+    
+    // Repairs
+    minor: 'Minor cosmetic fixes',
+    major: 'Major repairs needed',
+    
+    // Boolean text values
+    true: 'Yes',
+    false: 'No'
+  };
+
+  // Check if value is in our map (convert to string first for boolean comparison)
+  const stringValue = String(value).toLowerCase();
+  if (valueMap[stringValue]) {
+    return valueMap[stringValue];
+  }
+
+  // If it looks like a budget number, format it as currency
+  if (field === 'budget' && !isNaN(value)) {
+    return formatCurrency(parseFloat(value));
+  }
+
+  // Return the value as-is (no quotes!)
+  return String(value);
+};

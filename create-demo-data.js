@@ -5,91 +5,11 @@ const { v4: uuidv4 } = require('./backend/node_modules/uuid');
 const client = new DynamoDBClient({ region: 'us-east-1' });
 const ddb = DynamoDBDocumentClient.from(client);
 
-const premiumLeads = [
-  {
-    leadType: 'buyer',
-    score: 9,
-    contact: { name: 'Sarah Johnson', email: 'sarah.j@email.com', phone: '555-0101' },
-    location: { address: '123 Oak Street', city: 'Atlanta', state: 'GA', zip: '30301', lat: 33.7490, lng: -84.3880 },
-    aiReason: 'Pre-approved for $500K mortgage, looking to buy within 30 days. Highly motivated first-time buyer.',
-    responses: { budget: '450000-550000', timeline: '30 days', preApproved: true }
-  },
-  {
-    leadType: 'seller',
-    score: 10,
-    contact: { name: 'Michael Chen', email: 'mchen@email.com', phone: '555-0102' },
-    location: { address: '456 Pine Avenue', city: 'Atlanta', state: 'GA', zip: '30302', lat: 33.7550, lng: -84.3900 },
-    aiReason: 'Luxury home seller, property valued at $850K. Ready to list immediately with professional staging.',
-    responses: { propertyValue: '850000', condition: 'excellent', timeline: 'immediate' }
-  },
-  {
-    leadType: 'buyer',
-    score: 8,
-    contact: { name: 'Emily Rodriguez', email: 'e.rodriguez@email.com', phone: '555-0103' },
-    location: { address: '789 Maple Drive', city: 'Atlanta', state: 'GA', zip: '30303', lat: 33.7600, lng: -84.3950 },
-    aiReason: 'Young professional relocating for work. Pre-qualified and needs to close within 60 days.',
-    responses: { budget: '350000-400000', timeline: '60 days', preApproved: true }
-  },
-  {
-    leadType: 'seller',
-    score: 9,
-    contact: { name: 'David Thompson', email: 'd.thompson@email.com', phone: '555-0104' },
-    location: { address: '321 Birch Lane', city: 'Atlanta', state: 'GA', zip: '30304', lat: 33.7650, lng: -84.4000 },
-    aiReason: 'Inherited property, needs quick sale. Well-maintained 3BR/2BA in desirable neighborhood.',
-    responses: { propertyValue: '425000', condition: 'good', timeline: '30-60 days' }
-  },
-  {
-    leadType: 'buyer',
-    score: 10,
-    contact: { name: 'Jennifer Martinez', email: 'j.martinez@email.com', phone: '555-0105' },
-    location: { address: '654 Cedar Court', city: 'Atlanta', state: 'GA', zip: '30305', lat: 33.7700, lng: -84.4100 },
-    aiReason: 'Cash buyer looking for investment property. Ready to make offers immediately on multiple properties.',
-    responses: { budget: '500000+', timeline: 'immediate', preApproved: true, cashBuyer: true }
-  }
-];
+// Demo data arrays - currently empty
+// To add demo leads, populate these arrays and run: node create-demo-data.js
+const premiumLeads = [];
 
-const bulkLeads = [
-  {
-    leadType: 'buyer',
-    score: 3,
-    contact: { name: 'John Smith', email: 'j.smith@email.com', phone: '555-0201' },
-    location: { address: '100 Main St', city: 'Atlanta', state: 'GA', zip: '30306', lat: 33.7750, lng: -84.4150 },
-    aiReason: 'Early stage buyer, just starting to explore options. No pre-approval yet.',
-    responses: { budget: 'not sure', timeline: '6+ months', preApproved: false }
-  },
-  {
-    leadType: 'seller',
-    score: 2,
-    contact: { name: 'Mary Williams', email: 'm.williams@email.com', phone: '555-0202' },
-    location: { address: '200 Second Ave', city: 'Atlanta', state: 'GA', zip: '30307', lat: 33.7800, lng: -84.4200 },
-    aiReason: 'Considering selling in the future. No immediate plans or timeline.',
-    responses: { timeline: '1+ year', condition: 'fair' }
-  },
-  {
-    leadType: 'buyer',
-    score: 4,
-    contact: { name: 'Robert Brown', email: 'r.brown@email.com', phone: '555-0203' },
-    location: { address: '300 Third Blvd', city: 'Atlanta', state: 'GA', zip: '30308', lat: 33.7850, lng: -84.4250 },
-    aiReason: 'First-time buyer with limited budget. Needs financial guidance and education.',
-    responses: { budget: '200000-250000', timeline: '3-6 months', preApproved: false }
-  },
-  {
-    leadType: 'seller',
-    score: 3,
-    contact: { name: 'Lisa Davis', email: 'l.davis@email.com', phone: '555-0204' },
-    location: { address: '400 Fourth St', city: 'Atlanta', state: 'GA', zip: '30309', lat: 33.7900, lng: -84.4300 },
-    aiReason: 'Property needs significant repairs before listing. Exploring options.',
-    responses: { condition: 'needs work', timeline: '6+ months' }
-  },
-  {
-    leadType: 'buyer',
-    score: 2,
-    contact: { name: 'James Wilson', email: 'j.wilson@email.com', phone: '555-0205' },
-    location: { address: '500 Fifth Ave', city: 'Atlanta', state: 'GA', zip: '30310', lat: 33.7950, lng: -84.4350 },
-    aiReason: 'Casually browsing, no specific timeline or budget defined.',
-    responses: { timeline: 'just looking' }
-  }
-];
+const bulkLeads = [];
 
 async function createPremiumLeads() {
   const now = new Date().toISOString();

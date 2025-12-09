@@ -8,7 +8,9 @@ import {
   formatCurrency, 
   getLeadTypeLabel, 
   getTimeRemaining,
-  formatDate 
+  formatDate,
+  formatFieldLabel,
+  formatFieldValue
 } from '../utils/helpers';
 import './LeadDetails.css';
 
@@ -262,8 +264,8 @@ function LeadDetails() {
             <div className="responses">
               {Object.entries(lead.responses || {}).map(([question, answer]) => (
                 <div key={question} className="response-item">
-                  <div className="response-question">{question}:</div>
-                  <div className="response-answer">{JSON.stringify(answer)}</div>
+                  <div className="response-question">{formatFieldLabel(question)}</div>
+                  <div className="response-answer">{formatFieldValue(question, answer)}</div>
                 </div>
               ))}
             </div>

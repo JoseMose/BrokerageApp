@@ -92,6 +92,7 @@ export const handler = async (event: APIGatewayEvent) => {
         zip: body.location.zip.trim(),
       },
       responses: body.responses,
+      behaviorMetrics: body.behaviorMetrics || null, // Include behavioral telemetry if provided
       aiReason: '', // Will be set by AI scoring
       createdAt: timestamp,
       expiresAt,

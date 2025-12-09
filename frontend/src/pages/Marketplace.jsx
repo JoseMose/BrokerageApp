@@ -171,10 +171,10 @@ function Marketplace() {
           
           <div className="leads-grid">
             {leads.map(lead => (
-              <div key={lead.leadId} className="lead-card">
+              <div key={lead.leadId} className={`lead-card ${lead.leadType === 'seller' ? 'lead-card-seller' : 'lead-card-buyer'}`}>
                 <div className="lead-header">
                   <div>
-                    <span className="badge badge-primary">
+                    <span className={`badge ${lead.leadType === 'seller' ? 'badge-success' : 'badge-primary'}`}>
                       {getLeadTypeLabel(lead.leadType)}
                     </span>
                     <span className="lead-distance">📍 {lead.distance} mi away</span>
@@ -182,15 +182,15 @@ function Marketplace() {
                   <div className="lead-price">{formatCurrency(lead.price)}</div>
                 </div>
 
-                <div className="lead-score-section">
+                <div className={`lead-score-section ${lead.leadType === 'seller' ? 'score-section-seller' : 'score-section-buyer'}`}>
                   <div className="score-display-inline">
-                    <span className="score-big">{lead.score}</span>
+                    <span className={`score-big ${lead.leadType === 'seller' ? 'score-seller' : 'score-buyer'}`}>{lead.score}</span>
                     <span className="score-small">/10</span>
                   </div>
                 </div>
 
                 <div className="lead-info">
-                  <p className="lead-reason">{lead.aiReason}</p>
+                  <p className={`lead-reason ${lead.leadType === 'seller' ? 'lead-reason-seller' : 'lead-reason-buyer'}`}>{lead.aiReason}</p>
                   
                   <div className="lead-details">
                     <div className="detail-item">

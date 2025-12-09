@@ -18,7 +18,9 @@ const handlers = [
   // Public lead generation
   'create-lead',
   // Bulk packages
-  'bulk-packages'
+  'bulk-packages',
+  // AI Recommendations (daily 8 AM only)
+  'ai-recommendations'
 ];
 
 const distDir = path.join(__dirname, '..', 'dist');

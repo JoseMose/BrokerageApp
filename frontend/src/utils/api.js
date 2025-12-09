@@ -34,6 +34,7 @@ export const agentAPI = {
   updateProfile: (data) => apiClient.put('/agents', data),
   getAssignedLeads: () => apiClient.get('/agents/assigned-leads'),
   passLead: (leadId) => apiClient.post(`/agents/pass-lead/${leadId}`),
+  getAIRecommendations: (leads) => apiClient.post('/agents/ai-recommendations', { leads }),
 };
 
 // Marketplace APIs

@@ -1,11 +1,38 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ProgressIndicator from './ProgressIndicator';
 import LoadingSpinner from './LoadingSpinner';
 import RealtorComplianceModal from './RealtorComplianceModal';
 import ConfirmationScreen from './ConfirmationScreen';
 import { submitLead } from '../utils/api';
 
-const GEORGIA_CITIES = ['atlanta', 'savannah', 'augusta', 'columbus', 'macon', 'athens', 'sandy springs', 'roswell', 'johns creek', 'albany', 'warner robins', 'alpharetta', 'marietta', 'valdosta', 'smyrna', 'dunwoody'];
+// North Atlanta cities and ZIP codes (including Cobb County)
+const NORTH_ATLANTA_CITIES = [
+  'alpharetta', 'roswell', 'johns creek', 'milton', 'sandy springs',
+  'dunwoody', 'brookhaven', 'peachtree corners', 'duluth', 'suwanee',
+  'cumming', 'sugar hill', 'buford', 'lawrenceville', 'norcross',
+  'marietta', 'kennesaw', 'smyrna', 'acworth', 'powder springs',
+  'austell', 'mableton', 'vinings', 'east cobb', 'cobb county'
+];
+
+// North Atlanta ZIP codes (including Cobb County 30060-30082, 30090, 30106-30127, 30152, 30168)
+const NORTH_ATLANTA_ZIPS = [
+  // Fulton County - North Atlanta
+  '30004', '30005', '30009', '30022', '30024', '30040', '30041', '30060',
+  '30062', '30066', '30068', '30075', '30076', '30077', '30078', '30079',
+  '30080', '30092', '30093', '30094', '30096', '30097', '30188', '30338',
+  '30339', '30340', '30341', '30342', '30345', '30346', '30350', '30360',
+  '30518', '30519',
+  // Cobb County - Marietta and surrounding
+  '30060', '30061', '30062', '30063', '30064', '30066', '30067', '30068',
+  '30069', '30080', '30082', '30090', '30106', '30107', '30108', '30109',
+  '30126', '30127', '30152', '30168'
+];
+
+const isNorthAtlantaZip = (zip) => NORTH_ATLANTA_ZIPS.includes(zip.trim());
+const isNorthAtlantaCity = (location) => {
+  const lowerLocation = location.toLowerCase().trim();
+  return NORTH_ATLANTA_CITIES.some(city => lowerLocation.includes(city));
+};
 
 const LeadForm = () => {
   const [currentStep, setCurrentStep] = useState(1);
@@ -13,6 +40,28 @@ const LeadForm = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [errors, setErrors] = useState({});
+  const [showTransition, setShowTransition] = useState(false);
+  const [transitionText, setTransitionText] = useState('');
+
+  // Behavioral telemetry state
+  const [behaviorMetrics, setBehaviorMetrics] = useState({
+    timing_metrics: {},
+    interaction_metrics: {
+      edits_count: {},
+      focus_events: 0,
+      copy_paste_flag: false,
+      device_type: /Mobile|Android|iPhone/i.test(navigator.userAgent) ? 'mobile' : 'desktop',
+      user_agent: navigator.userAgent,
+      screen_size: `${window.innerWidth}x${window.innerHeight}`,
+    },
+    behavior_summary: {},
+  });
+
+  const stepStartTime = useRef(Date.now());
+  const formStartTime = useRef(Date.now());
+  const typingStartTime = useRef(null);
+  const fieldEditCounts = useRef({});
+  const previousValues = useRef({});
 
   const [formData, setFormData] = useState({
     leadType: '',           // Step 1
@@ -20,7 +69,12 @@ const LeadForm = () => {
     timeline: '',           // Step 3
     location: '',           // Step 4
     preApproved: null,      // Step 5 (buyer)
+    priceRange: '',         // Step 5 (buyer)
+    rentingOrSelling: '',   // Step 5 (buyer)
+    earnestMoney: null,     // Step 5 (buyer)
     estimatedValue: '',     // Step 5 (seller)
+    occupiedStatus: '',     // Step 5 (seller)
+    majorRepairs: null,     // Step 5 (seller)
     hasRealtor: null,       // Step 6
     name: '',               // Step 7
     phone: '',              // Step 7
@@ -29,6 +83,49 @@ const LeadForm = () => {
   });
 
   const totalSteps = 8;
+
+  // Track step timing
+  useEffect(() => {
+    stepStartTime.current = Date.now();
+  }, [currentStep]);
+
+  // Track field edits and typing
+  const handleFieldChange = (fieldName, value) => {
+    // Track if value actually changed (edit count)
+    if (previousValues.current[fieldName] !== undefined && previousValues.current[fieldName] !== value) {
+      fieldEditCounts.current[fieldName] = (fieldEditCounts.current[fieldName] || 0) + 1;
+    }
+    previousValues.current[fieldName] = value;
+
+    // Track typing start time
+    if (!typingStartTime.current) {
+      typingStartTime.current = Date.now();
+    }
+
+    setFormData(prev => ({ ...prev, [fieldName]: value }));
+  };
+
+  // Track focus events
+  const handleFocus = () => {
+    setBehaviorMetrics(prev => ({
+      ...prev,
+      interaction_metrics: {
+        ...prev.interaction_metrics,
+        focus_events: prev.interaction_metrics.focus_events + 1,
+      },
+    }));
+  };
+
+  // Track copy/paste
+  const handlePaste = () => {
+    setBehaviorMetrics(prev => ({
+      ...prev,
+      interaction_metrics: {
+        ...prev.interaction_metrics,
+        copy_paste_flag: true,
+      },
+    }));
+  };
 
   const validateStep = (step) => {
     const newErrors = {};
@@ -46,21 +143,40 @@ const LeadForm = () => {
       if (!formData.location.trim()) {
         newErrors.location = 'Please enter a city or ZIP code';
       } else {
-        const isZip = /^(30|31)\d{3}$/.test(formData.location.trim());
-        const isGeorgiaCity = GEORGIA_CITIES.some(city => 
-          formData.location.toLowerCase().includes(city)
-        );
-        if (!isZip && !isGeorgiaCity) {
-          newErrors.location = 'We currently only serve Georgia. Please enter a Georgia city or ZIP code.';
+        const input = formData.location.trim();
+        const zipMatch = input.match(/\d{5}/);
+        const isValidZip = zipMatch && isNorthAtlantaZip(zipMatch[0]);
+        const isValidCity = isNorthAtlantaCity(input);
+        
+        if (!isValidZip && !isValidCity) {
+          newErrors.location = 'Sorry, we currently only serve North Atlanta & Cobb County. Please enter a valid city or ZIP code from our service area.';
         }
       }
     }
     if (step === 5) {
-      if (formData.leadType === 'buyer' && formData.preApproved === null) {
-        newErrors.preApproved = 'Please select an option';
-      }
-      if (formData.leadType === 'seller' && !formData.estimatedValue) {
-        newErrors.estimatedValue = 'Please provide an estimate';
+      if (formData.leadType === 'buyer') {
+        if (!formData.preApproved) {
+          newErrors.preApproved = 'Please select your pre-approval status';
+        }
+        if (!formData.priceRange) {
+          newErrors.priceRange = 'Please select your price range';
+        }
+        if (!formData.rentingOrSelling) {
+          newErrors.rentingOrSelling = 'Please select your current situation';
+        }
+        if (!formData.earnestMoney) {
+          newErrors.earnestMoney = 'Please indicate if you have earnest money ready';
+        }
+      } else if (formData.leadType === 'seller') {
+        if (!formData.estimatedValue) {
+          newErrors.estimatedValue = 'Please provide an estimate';
+        }
+        if (!formData.occupiedStatus) {
+          newErrors.occupiedStatus = 'Please select the occupancy status';
+        }
+        if (!formData.majorRepairs) {
+          newErrors.majorRepairs = 'Please indicate if repairs are needed';
+        }
       }
     }
     if (step === 7) {
@@ -85,6 +201,23 @@ const LeadForm = () => {
 
   const handleNext = () => {
     if (validateStep(currentStep)) {
+      // Calculate time spent on this step
+      const timeOnStep = Date.now() - stepStartTime.current;
+      const typingDuration = typingStartTime.current ? Date.now() - typingStartTime.current : 0;
+      
+      // Store timing for this step
+      setBehaviorMetrics(prev => ({
+        ...prev,
+        timing_metrics: {
+          ...prev.timing_metrics,
+          [`step_${currentStep}_time_ms`]: timeOnStep,
+          [`step_${currentStep}_typing_ms`]: typingDuration,
+        },
+      }));
+      
+      // Reset typing timer
+      typingStartTime.current = null;
+
       if (currentStep === 6) {
         if (formData.hasRealtor === true) {
           setShowComplianceModal(true);
@@ -92,8 +225,25 @@ const LeadForm = () => {
         }
       }
       
-      setCurrentStep(currentStep + 1);
-      setErrors({});
+      // Show transition animation with random delay (600-1000ms)
+      const transitionMessages = [
+        'Analyzing your answers...',
+        'Processing...',
+        'One moment...',
+        'Checking your information...',
+        'Almost there...',
+      ];
+      
+      setTransitionText(transitionMessages[Math.floor(Math.random() * transitionMessages.length)]);
+      setShowTransition(true);
+      
+      const delay = 600 + Math.random() * 400; // Random 600-1000ms
+      
+      setTimeout(() => {
+        setCurrentStep(currentStep + 1);
+        setShowTransition(false);
+        setErrors({});
+      }, delay);
     }
   };
 
@@ -126,6 +276,15 @@ const LeadForm = () => {
     setErrors({});
 
     try {
+      // Calculate total form time
+      const totalFormTime = Date.now() - formStartTime.current;
+      
+      // Calculate behavior summary flags
+      const avgStepTime = totalFormTime / totalSteps;
+      const isFastFiller = avgStepTime < 3000; // Less than 3s per step
+      const isHesitant = Object.values(fieldEditCounts.current).some(count => count > 3);
+      const isLikelyBot = isFastFiller && !behaviorMetrics.interaction_metrics.focus_events;
+
       // Build responses object for AI scoring
       const responses = {
         motivation: formData.motivation,
@@ -136,9 +295,14 @@ const LeadForm = () => {
       if (formData.leadType === 'buyer') {
         responses.preApproved = formData.preApproved;
         responses.buyingTimeline = formData.timeline;
+        responses.priceRange = formData.priceRange;
+        responses.rentingOrSelling = formData.rentingOrSelling;
+        responses.earnestMoney = formData.earnestMoney;
       } else {
         responses.estimatedValue = formData.estimatedValue;
         responses.sellingTimeline = formData.timeline;
+        responses.occupiedStatus = formData.occupiedStatus;
+        responses.majorRepairs = formData.majorRepairs;
       }
 
       const payload = {
@@ -155,6 +319,22 @@ const LeadForm = () => {
           zipCode: formData.location.match(/\d{5}/) ? formData.location.match(/\d{5}/)[0] : '30301',
         },
         responses,
+        // Add behavioral telemetry
+        behaviorMetrics: {
+          timing_metrics: {
+            ...behaviorMetrics.timing_metrics,
+            total_form_time_ms: totalFormTime,
+          },
+          interaction_metrics: {
+            ...behaviorMetrics.interaction_metrics,
+            edits_count: fieldEditCounts.current,
+          },
+          behavior_summary: {
+            fast_filler: isFastFiller,
+            hesitant: isHesitant,
+            likely_bot: isLikelyBot,
+          },
+        },
       };
 
       const response = await submitLead(payload);
@@ -195,8 +375,113 @@ const LeadForm = () => {
     setErrors({});
   };
 
+  // Helper function to format field labels for display
+  const formatFieldLabel = (field) => {
+    const labelMap = {
+      leadType: 'Lead Type',
+      motivation: 'Motivation',
+      timeline: 'Timeline',
+      location: 'Location',
+      preApproved: 'Pre-Approval Status',
+      priceRange: 'Budget Range',
+      rentingOrSelling: 'Current Housing Situation',
+      earnestMoney: 'Earnest Money Ready',
+      estimatedValue: 'Estimated Property Value',
+      occupiedStatus: 'Occupancy Status',
+      majorRepairs: 'Repairs Needed',
+      hasRealtor: 'Working with Realtor',
+      name: 'Name',
+      email: 'Email',
+      phone: 'Phone'
+    };
+    return labelMap[field] || field;
+  };
+
+  // Helper function to format field values for display
+  const formatFieldValue = (field, value) => {
+    if (value === null || value === undefined || value === '') return 'Not specified';
+
+    // Format specific fields
+    const valueMap = {
+      // Lead type
+      buyer: 'Buying a home',
+      seller: 'Selling a home',
+      
+      // Motivation
+      'first-home': 'Buying my first home',
+      relocating: 'Relocating for work/family',
+      upgrading: formData.leadType === 'buyer' ? 'Upgrading to a bigger home' : 'Buying a bigger home',
+      downsizing: 'Downsizing/Empty nester',
+      investment: 'Investment/rental property',
+      financial: 'Financial reasons',
+      inherited: 'Inherited property',
+      'investment-exit': 'Selling investment property',
+      divorce: 'Divorce/Life changes',
+      other: 'Other reasons',
+      
+      // Timeline
+      asap: formData.leadType === 'buyer' ? 'ASAP (Ready to buy now!)' : 'ASAP (Ready to list now!)',
+      '1-3-months': 'Within 1-3 months',
+      '3-6-months': 'Within 3-6 months',
+      '6-plus-months': formData.leadType === 'buyer' ? '6+ months (Just exploring)' : '6+ months (Just researching)',
+      
+      // Pre-approval
+      yes: 'Yes, pre-approved',
+      'not-yet': 'Not yet, but working on it',
+      no: 'No, not yet',
+      
+      // Price/Value ranges
+      '0-200k': 'Under $200k',
+      '200k-400k': '$200k - $400k',
+      '400k-600k': '$400k - $600k',
+      '600k-1m': '$600k - $1M',
+      '1m-plus': '$1M+',
+      flexible: 'Flexible',
+      'not-sure': 'Not sure',
+      
+      // Renting/Selling
+      renting: 'Currently renting',
+      'selling-first': 'Need to sell my home first',
+      'first-time': 'First-time buyer (living with family)',
+      
+      // Occupancy
+      owner: 'Owner-occupied (I live here)',
+      tenant: 'Tenant-occupied (rental)',
+      vacant: 'Vacant',
+      
+      // Repairs
+      minor: 'Minor cosmetic fixes',
+      major: 'Yes, major repairs needed',
+      
+      // Boolean values
+      true: 'Yes',
+      false: 'No'
+    };
+
+    // Check if it's a mapped value
+    if (valueMap[value]) return valueMap[value];
+    
+    // For yes/no earnest money or repairs "no"
+    if (field === 'earnestMoney' && value === 'yes') return 'Yes, ready now';
+    if (field === 'earnestMoney' && value === 'no') return 'Not yet';
+    if (field === 'majorRepairs' && value === 'no') return 'No, move-in ready';
+    
+    // Return the value as-is if no mapping found
+    return value;
+  };
+
   if (isSubmitting) {
     return <LoadingSpinner message="Finding the perfect agent match for you..." />;
+  }
+
+  if (showTransition) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-pearl via-white to-pearl-100 py-8 px-4 flex items-center justify-center">
+        <div className="text-center">
+          <LoadingSpinner message={transitionText} />
+        </div>
+      </div>
+    );
   }
 
   if (showConfirmation) {
@@ -208,23 +493,23 @@ const LeadForm = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 py-8 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-pearl via-white to-pearl-100 py-8 px-4">
       <div className="max-w-2xl mx-auto">
-        <div className="bg-white rounded-3xl shadow-xl p-8 md:p-12">
+        <div className="bg-white rounded-3xl shadow-2xl shadow-navy/5 p-8 md:p-12 border border-pearl-300">
           <ProgressIndicator currentStep={currentStep} totalSteps={totalSteps} />
 
           {isSubmitting ? (
             <LoadingSpinner message="Analyzing your answers..." />
           ) : (
-            <div className="animate-fade-in">
+            <div className="transition-opacity duration-300 ease-in-out opacity-100">
               {/* Step 1: Lead Type */}
               {currentStep === 1 && (
-                <div className="space-y-6">
+                <div className="space-y-6 animate-fade-in">
                   <div className="text-center mb-8">
-                    <h2 className="text-3xl font-bold text-gray-900 mb-2">
+                    <h2 className="text-3xl font-bold text-navy mb-2">
                       Let's find the right realtor for you
                     </h2>
-                    <p className="text-gray-600">Choose one to get started</p>
+                    <p className="text-slate">Choose one to get started</p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -236,13 +521,13 @@ const LeadForm = () => {
                       }}
                       className={`p-8 rounded-2xl border-2 transition-all duration-200 ${
                         formData.leadType === 'buyer'
-                          ? 'border-primary-500 bg-primary-50 shadow-lg scale-105'
-                          : 'border-gray-200 hover:border-primary-300 hover:shadow-md'
+                          ? 'border-electric bg-electric-50 shadow-lg shadow-electric/20 scale-105'
+                          : 'border-pearl-300 hover:border-electric-300 hover:shadow-md hover:bg-pearl-50'
                       }`}
                     >
                       <div className="text-5xl mb-4">🏠</div>
-                      <h3 className="text-xl font-bold text-gray-900 mb-2">I want to buy a home</h3>
-                      <p className="text-sm text-gray-600">Find your dream property</p>
+                      <h3 className="text-xl font-bold text-navy mb-2">I want to buy a home</h3>
+                      <p className="text-sm text-slate">Find your dream property</p>
                     </button>
 
                     <button
@@ -253,37 +538,38 @@ const LeadForm = () => {
                       }}
                       className={`p-8 rounded-2xl border-2 transition-all duration-200 ${
                         formData.leadType === 'seller'
-                          ? 'border-primary-500 bg-primary-50 shadow-lg scale-105'
-                          : 'border-gray-200 hover:border-primary-300 hover:shadow-md'
+                          ? 'border-electric bg-electric-50 shadow-lg scale-105'
+                          : 'border-pearl-300 hover:border-electric-300 hover:shadow-md bg-pearl-50'
                       }`}
                     >
                       <div className="text-5xl mb-4">🏡</div>
-                      <h3 className="text-xl font-bold text-gray-900 mb-2">I want to sell a home</h3>
-                      <p className="text-sm text-gray-600">Get the best value</p>
+                      <h3 className="text-xl font-bold text-navy mb-2">I want to sell a home</h3>
+                      <p className="text-sm text-slate">Get the best value</p>
                     </button>
                   </div>
                   {errors.leadType && (
-                    <p className="text-red-500 text-sm text-center mt-2">{errors.leadType}</p>
+                    <p className="text-danger text-sm text-center mt-2">{errors.leadType}</p>
                   )}
                 </div>
               )}
 
-              {/* Step 2: Motivation */}
-              {currentStep === 2 && (
+              {/* Step 2: Motivation - Buyer */}
+              {currentStep === 2 && formData.leadType === 'buyer' && (
                 <div className="space-y-6">
                   <div className="text-center mb-8">
-                    <h2 className="text-3xl font-bold text-gray-900 mb-2">
-                      What's motivating your move?
+                    <h2 className="text-3xl font-bold text-navy mb-2">
+                      What's motivating your home purchase?
                     </h2>
-                    <p className="text-gray-600">This helps us understand your needs</p>
+                    <p className="text-slate">This helps us find the perfect agent for your needs</p>
                   </div>
 
                   <div className="space-y-3">
                     {[
                       { value: 'first-home', label: 'Buying my first home', icon: '🎉' },
                       { value: 'relocating', label: 'Relocating for work/family', icon: '✈️' },
-                      { value: 'investing', label: 'Investment property', icon: '💰' },
-                      { value: 'upsizing', label: 'Upsizing/Downsizing', icon: '📏' },
+                      { value: 'upgrading', label: 'Upgrading to a bigger home', icon: '⬆️' },
+                      { value: 'downsizing', label: 'Downsizing/Empty nester', icon: '📦' },
+                      { value: 'investment', label: 'Investment/rental property', icon: '💰' },
                       { value: 'other', label: 'Other reasons', icon: '🤔' },
                     ].map((option) => (
                       <button
@@ -295,37 +581,82 @@ const LeadForm = () => {
                         }}
                         className={`w-full p-5 rounded-xl border-2 transition-all duration-200 flex items-center gap-4 ${
                           formData.motivation === option.value
-                            ? 'border-primary-500 bg-primary-50 shadow-lg'
-                            : 'border-gray-200 hover:border-primary-300 hover:shadow-md'
+                            ? 'border-electric bg-electric-50 shadow-lg'
+                            : 'border-pearl-300 hover:border-electric-300 hover:shadow-md bg-pearl-50'
                         }`}
                       >
                         <span className="text-3xl">{option.icon}</span>
-                        <span className="text-lg font-semibold text-gray-900">{option.label}</span>
+                        <span className="text-lg font-semibold text-navy">{option.label}</span>
                       </button>
                     ))}
                   </div>
                   {errors.motivation && (
-                    <p className="text-red-500 text-sm text-center mt-2">{errors.motivation}</p>
+                    <p className="text-danger text-sm text-center mt-2">{errors.motivation}</p>
                   )}
                 </div>
               )}
 
-              {/* Step 3: Timeline */}
-              {currentStep === 3 && (
+              {/* Step 2: Motivation - Seller */}
+              {currentStep === 2 && formData.leadType === 'seller' && (
                 <div className="space-y-6">
                   <div className="text-center mb-8">
-                    <h2 className="text-3xl font-bold text-gray-900 mb-2">
-                      When are you planning to move?
+                    <h2 className="text-3xl font-bold text-navy mb-2">
+                      Why are you selling your home?
                     </h2>
-                    <p className="text-gray-600">Your timeline helps us prioritize your match</p>
+                    <p className="text-slate">This helps us match you with the right agent</p>
                   </div>
 
                   <div className="space-y-3">
                     {[
-                      { value: 'asap', label: 'ASAP (Ready now!)', icon: '⚡' },
-                      { value: '1-3-months', label: '1-3 months', icon: '📅' },
-                      { value: '3-6-months', label: '3-6 months', icon: '🗓️' },
-                      { value: '6-plus-months', label: '6+ months (Just planning)', icon: '🤷' },
+                      { value: 'relocating', label: 'Relocating for work/family', icon: '✈️' },
+                      { value: 'upgrading', label: 'Buying a bigger home', icon: '⬆️' },
+                      { value: 'downsizing', label: 'Downsizing/Empty nester', icon: '📦' },
+                      { value: 'financial', label: 'Financial reasons', icon: '💵' },
+                      { value: 'inherited', label: 'Inherited property', icon: '🏡' },
+                      { value: 'investment-exit', label: 'Selling investment property', icon: '💰' },
+                      { value: 'divorce', label: 'Divorce/Life changes', icon: '�' },
+                      { value: 'other', label: 'Other reasons', icon: '🤔' },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => {
+                          setFormData({ ...formData, motivation: option.value });
+                          setErrors({});
+                          setCurrentStep(3);
+                        }}
+                        className={`w-full p-5 rounded-xl border-2 transition-all duration-200 flex items-center gap-4 ${
+                          formData.motivation === option.value
+                            ? 'border-electric bg-electric-50 shadow-lg'
+                            : 'border-pearl-300 hover:border-electric-300 hover:shadow-md bg-pearl-50'
+                        }`}
+                      >
+                        <span className="text-3xl">{option.icon}</span>
+                        <span className="text-lg font-semibold text-navy">{option.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {errors.motivation && (
+                    <p className="text-danger text-sm text-center mt-2">{errors.motivation}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Step 3: Timeline - Buyer */}
+              {currentStep === 3 && formData.leadType === 'buyer' && (
+                <div className="space-y-6">
+                  <div className="text-center mb-8">
+                    <h2 className="text-3xl font-bold text-navy mb-2">
+                      When do you want to buy?
+                    </h2>
+                    <p className="text-slate">Your timeline helps us prioritize your match</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {[
+                      { value: 'asap', label: 'ASAP (Ready to buy now!)', icon: '⚡' },
+                      { value: '1-3-months', label: 'Within 1-3 months', icon: '📅' },
+                      { value: '3-6-months', label: 'Within 3-6 months', icon: '🗓️' },
+                      { value: '6-plus-months', label: '6+ months (Just exploring)', icon: '🔍' },
                     ].map((option) => (
                       <button
                         key={option.value}
@@ -336,55 +667,98 @@ const LeadForm = () => {
                         }}
                         className={`w-full p-5 rounded-xl border-2 transition-all duration-200 flex items-center gap-4 ${
                           formData.timeline === option.value
-                            ? 'border-primary-500 bg-primary-50 shadow-lg'
-                            : 'border-gray-200 hover:border-primary-300 hover:shadow-md'
+                            ? 'border-electric bg-electric-50 shadow-lg'
+                            : 'border-pearl-300 hover:border-electric-300 hover:shadow-md bg-pearl-50'
                         }`}
                       >
                         <span className="text-3xl">{option.icon}</span>
-                        <span className="text-lg font-semibold text-gray-900">{option.label}</span>
+                        <span className="text-lg font-semibold text-navy">{option.label}</span>
                       </button>
                     ))}
                   </div>
                   {errors.timeline && (
-                    <p className="text-red-500 text-sm text-center mt-2">{errors.timeline}</p>
+                    <p className="text-danger text-sm text-center mt-2">{errors.timeline}</p>
                   )}
                 </div>
               )}
 
-              {/* Step 4: Location */}
-              {currentStep === 4 && (
+              {/* Step 3: Timeline - Seller */}
+              {currentStep === 3 && formData.leadType === 'seller' && (
                 <div className="space-y-6">
                   <div className="text-center mb-8">
-                    <h2 className="text-3xl font-bold text-gray-900 mb-2">
-                      Where are you looking?
+                    <h2 className="text-3xl font-bold text-navy mb-2">
+                      When do you want to sell?
                     </h2>
-                    <p className="text-gray-600">Enter a Georgia city or ZIP code</p>
+                    <p className="text-slate">Your timeline helps us find the right agent</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {[
+                      { value: 'asap', label: 'ASAP (Ready to list now!)', icon: '⚡' },
+                      { value: '1-3-months', label: 'Within 1-3 months', icon: '📅' },
+                      { value: '3-6-months', label: 'Within 3-6 months', icon: '🗓️' },
+                      { value: '6-plus-months', label: '6+ months (Just researching)', icon: '📊' },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => {
+                          setFormData({ ...formData, timeline: option.value });
+                          setErrors({});
+                          setCurrentStep(4);
+                        }}
+                        className={`w-full p-5 rounded-xl border-2 transition-all duration-200 flex items-center gap-4 ${
+                          formData.timeline === option.value
+                            ? 'border-electric bg-electric-50 shadow-lg'
+                            : 'border-pearl-300 hover:border-electric-300 hover:shadow-md bg-pearl-50'
+                        }`}
+                      >
+                        <span className="text-3xl">{option.icon}</span>
+                        <span className="text-lg font-semibold text-navy">{option.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {errors.timeline && (
+                    <p className="text-danger text-sm text-center mt-2">{errors.timeline}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Step 4: Location - Buyer */}
+              {currentStep === 4 && formData.leadType === 'buyer' && (
+                <div className="space-y-6">
+                  <div className="text-center mb-8">
+                    <h2 className="text-3xl font-bold text-navy mb-2">
+                      Where do you want to buy?
+                    </h2>
+                    <p className="text-slate">Enter a North Atlanta city or ZIP code</p>
                   </div>
 
                   <div className="space-y-4">
                     <div>
                       <input
                         type="text"
-                        placeholder="e.g., Atlanta or 30301"
+                        placeholder="e.g., Alpharetta, Marietta, or 30022"
                         value={formData.location}
-                        onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                        onChange={(e) => handleFieldChange('location', e.target.value)}
+                        onFocus={handleFocus}
+                        onPaste={handlePaste}
                         onKeyPress={(e) => {
                           if (e.key === 'Enter') {
                             handleNext();
                           }
                         }}
-                        className={`w-full p-4 text-lg border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${
-                          errors.location ? 'border-red-500' : 'border-gray-300'
+                        className={`w-full p-4 text-lg border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-electric transition-all ${
+                          errors.location ? 'border-danger' : 'border-pearl-300'
                         }`}
                       />
                       {errors.location && (
-                        <p className="text-red-500 text-sm mt-2">{errors.location}</p>
+                        <p className="text-danger text-sm mt-2">{errors.location}</p>
                       )}
                     </div>
 
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                      <p className="text-sm text-blue-900">
-                        <strong>📍 Currently serving:</strong> All of Georgia
+                    <div className="bg-electric-50 border border-electric-200 rounded-xl p-4">
+                      <p className="text-sm text-navy">
+                        <strong>📍 Service Area:</strong> North Atlanta & Cobb County (Alpharetta, Roswell, Johns Creek, Milton, Sandy Springs, Dunwoody, Marietta, Kennesaw, Smyrna, and surrounding areas)
                       </p>
                     </div>
 
@@ -392,14 +766,73 @@ const LeadForm = () => {
                       <button
                         type="button"
                         onClick={handleBack}
-                        className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-all"
+                        className="flex-1 px-6 py-3 border-2 border-slate-300 text-slate-700 font-semibold rounded-xl hover:bg-pearl-50 transition-all"
                       >
                         Back
                       </button>
                       <button
                         type="button"
                         onClick={handleNext}
-                        className="flex-1 px-6 py-3 bg-gradient-to-r from-primary-500 to-secondary-500 text-white font-semibold rounded-xl hover:from-primary-600 hover:to-secondary-600 transition-all shadow-lg"
+                        className="flex-1 px-6 py-3 bg-gradient-to-r from-electric to-electric-600 text-white font-semibold rounded-xl hover:from-electric-600 hover:to-electric-700 transition-all shadow-lg"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 4: Location - Seller */}
+              {currentStep === 4 && formData.leadType === 'seller' && (
+                <div className="space-y-6">
+                  <div className="text-center mb-8">
+                    <h2 className="text-3xl font-bold text-navy mb-2">
+                      Where is your property located?
+                    </h2>
+                    <p className="text-slate">Enter the city or ZIP code</p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="e.g., Alpharetta, Marietta, or 30022"
+                        value={formData.location}
+                        onChange={(e) => handleFieldChange('location', e.target.value)}
+                        onFocus={handleFocus}
+                        onPaste={handlePaste}
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            handleNext();
+                          }
+                        }}
+                        className={`w-full p-4 text-lg border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-electric transition-all ${
+                          errors.location ? 'border-danger' : 'border-pearl-300'
+                        }`}
+                      />
+                      {errors.location && (
+                        <p className="text-danger text-sm mt-2">{errors.location}</p>
+                      )}
+                    </div>
+
+                    <div className="bg-electric-50 border border-electric-200 rounded-xl p-4">
+                      <p className="text-sm text-navy">
+                        <strong>📍 Service Area:</strong> North Atlanta & Cobb County (Alpharetta, Roswell, Johns Creek, Milton, Sandy Springs, Dunwoody, Marietta, Kennesaw, Smyrna, and surrounding areas)
+                      </p>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={handleBack}
+                        className="flex-1 px-6 py-3 border-2 border-slate-300 text-slate-700 font-semibold rounded-xl hover:bg-pearl-50 transition-all"
+                      >
+                        Back
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleNext}
+                        className="flex-1 px-6 py-3 bg-gradient-to-r from-electric to-electric-600 text-white font-semibold rounded-xl hover:from-electric-600 hover:to-electric-700 transition-all shadow-lg"
                       >
                         Next
                       </button>
@@ -412,39 +845,155 @@ const LeadForm = () => {
               {currentStep === 5 && formData.leadType === 'buyer' && (
                 <div className="space-y-6">
                   <div className="text-center mb-8">
-                    <h2 className="text-3xl font-bold text-gray-900 mb-2">
-                      Have you been pre-approved for a mortgage?
+                    <h2 className="text-3xl font-bold text-navy mb-2">
+                      Tell us about your buying situation
                     </h2>
-                    <p className="text-gray-600">This helps gauge your readiness</p>
+                    <p className="text-slate">This helps us match you with the right agent</p>
                   </div>
 
-                  <div className="space-y-3">
-                    {[
-                      { value: true, label: "Yes, I'm pre-approved ✓", icon: '✅' },
-                      { value: false, label: 'No, not yet', icon: '⏳' },
-                      { value: 'not-yet', label: 'Not yet, but working on it', icon: '🏦' },
-                    ].map((option) => (
-                      <button
-                        key={String(option.value)}
-                        onClick={() => {
-                          setFormData({ ...formData, preApproved: option.value });
-                          setErrors({});
-                          setCurrentStep(6);
-                        }}
-                        className={`w-full p-5 rounded-xl border-2 transition-all duration-200 flex items-center gap-4 ${
-                          formData.preApproved === option.value
-                            ? 'border-primary-500 bg-primary-50 shadow-lg'
-                            : 'border-gray-200 hover:border-primary-300 hover:shadow-md'
-                        }`}
-                      >
-                        <span className="text-3xl">{option.icon}</span>
-                        <span className="text-lg font-semibold text-gray-900">{option.label}</span>
-                      </button>
-                    ))}
+                  <div className="space-y-6">
+                    {/* Pre-approval Status */}
+                    <div>
+                      <label className="block text-sm font-semibold text-navy-700 mb-3">
+                        Are you pre-approved for a mortgage? *
+                      </label>
+                      <div className="space-y-2">
+                        {[
+                          { value: 'yes', label: "Yes, I'm pre-approved ✓", icon: '✅' },
+                          { value: 'not-yet', label: 'Not yet, but working on it', icon: '🏦' },
+                          { value: 'no', label: 'No, not yet', icon: '⏳' },
+                        ].map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => handleFieldChange('preApproved', option.value)}
+                            className={`w-full p-4 rounded-xl border-2 transition-all duration-200 flex items-center gap-3 ${
+                              formData.preApproved === option.value
+                                ? 'border-electric bg-electric-50 shadow-md'
+                                : 'border-pearl-300 hover:border-electric-300 hover:shadow-sm bg-pearl-50'
+                            }`}
+                          >
+                            <span className="text-2xl">{option.icon}</span>
+                            <span className="text-base font-semibold text-navy">{option.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                      {errors.preApproved && (
+                        <p className="text-danger text-sm mt-2">{errors.preApproved}</p>
+                      )}
+                    </div>
+
+                    {/* Price Range */}
+                    <div>
+                      <label className="block text-sm font-semibold text-navy-700 mb-3">
+                        What's your budget range? *
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { value: '0-200k', label: 'Under $200k' },
+                          { value: '200k-400k', label: '$200k-$400k' },
+                          { value: '400k-600k', label: '$400k-$600k' },
+                          { value: '600k-1m', label: '$600k-$1M' },
+                          { value: '1m-plus', label: '$1M+' },
+                          { value: 'flexible', label: 'Flexible' },
+                        ].map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => handleFieldChange('priceRange', option.value)}
+                            className={`p-3 rounded-lg border-2 transition-all duration-200 ${
+                              formData.priceRange === option.value
+                                ? 'border-electric bg-electric-50 shadow-md'
+                                : 'border-pearl-300 hover:border-electric-300 bg-pearl-50'
+                            }`}
+                          >
+                            <span className="text-sm font-semibold text-navy">{option.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                      {errors.priceRange && (
+                        <p className="text-danger text-sm mt-2">{errors.priceRange}</p>
+                      )}
+                    </div>
+
+                    {/* Current Housing Situation */}
+                    <div>
+                      <label className="block text-sm font-semibold text-navy-700 mb-3">
+                        Are you currently renting or selling first? *
+                      </label>
+                      <div className="space-y-2">
+                        {[
+                          { value: 'renting', label: 'Currently renting', icon: '🏢' },
+                          { value: 'selling-first', label: 'Need to sell my home first', icon: '🔄' },
+                          { value: 'first-time', label: 'First-time buyer (living with family)', icon: '🏠' },
+                        ].map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => handleFieldChange('rentingOrSelling', option.value)}
+                            className={`w-full p-4 rounded-xl border-2 transition-all duration-200 flex items-center gap-3 ${
+                              formData.rentingOrSelling === option.value
+                                ? 'border-electric bg-electric-50 shadow-md'
+                                : 'border-pearl-300 hover:border-electric-300 hover:shadow-sm bg-pearl-50'
+                            }`}
+                          >
+                            <span className="text-2xl">{option.icon}</span>
+                            <span className="text-base font-semibold text-navy">{option.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                      {errors.rentingOrSelling && (
+                        <p className="text-danger text-sm mt-2">{errors.rentingOrSelling}</p>
+                      )}
+                    </div>
+
+                    {/* Earnest Money */}
+                    <div>
+                      <label className="block text-sm font-semibold text-navy-700 mb-3">
+                        Do you have earnest money ready? *
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        {[
+                          { value: 'yes', label: 'Yes, ready now', icon: '✅' },
+                          { value: 'no', label: 'Not yet', icon: '⏳' },
+                        ].map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => handleFieldChange('earnestMoney', option.value)}
+                            className={`p-4 rounded-xl border-2 transition-all duration-200 flex flex-col items-center gap-2 ${
+                              formData.earnestMoney === option.value
+                                ? 'border-electric bg-electric-50 shadow-md'
+                                : 'border-pearl-300 hover:border-electric-300 bg-pearl-50'
+                            }`}
+                          >
+                            <span className="text-3xl">{option.icon}</span>
+                            <span className="text-sm font-semibold text-navy">{option.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                      {errors.earnestMoney && (
+                        <p className="text-danger text-sm mt-2">{errors.earnestMoney}</p>
+                      )}
+                    </div>
                   </div>
-                  {errors.preApproved && (
-                    <p className="text-red-500 text-sm text-center mt-2">{errors.preApproved}</p>
-                  )}
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      type="button"
+                      onClick={handleBack}
+                      className="flex-1 px-6 py-3 border-2 border-slate-300 text-slate-700 font-semibold rounded-xl hover:bg-pearl-50 transition-all"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleNext}
+                      className="flex-1 px-6 py-3 bg-gradient-to-r from-electric to-electric-600 text-white font-semibold rounded-xl hover:from-electric-600 hover:to-electric-700 transition-all shadow-lg"
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -452,41 +1001,126 @@ const LeadForm = () => {
               {currentStep === 5 && formData.leadType === 'seller' && (
                 <div className="space-y-6">
                   <div className="text-center mb-8">
-                    <h2 className="text-3xl font-bold text-gray-900 mb-2">
-                      What's your home's estimated value?
+                    <h2 className="text-3xl font-bold text-navy mb-2">
+                      Tell us about your property
                     </h2>
-                    <p className="text-gray-600">A rough estimate is fine</p>
+                    <p className="text-slate">This helps us find the best agent for your sale</p>
                   </div>
 
-                  <div className="space-y-3">
-                    {[
-                      { value: '0-200k', label: 'Under $200k', icon: '🏘️' },
-                      { value: '200k-400k', label: '$200k - $400k', icon: '🏠' },
-                      { value: '400k-600k', label: '$400k - $600k', icon: '🏡' },
-                      { value: '600k-1m', label: '$600k - $1M', icon: '🏰' },
-                      { value: '1m-plus', label: '$1M+', icon: '🏛️' },
-                    ].map((option) => (
-                      <button
-                        key={option.value}
-                        onClick={() => {
-                          setFormData({ ...formData, estimatedValue: option.value });
-                          setErrors({});
-                          setCurrentStep(6);
-                        }}
-                        className={`w-full p-5 rounded-xl border-2 transition-all duration-200 flex items-center gap-4 ${
-                          formData.estimatedValue === option.value
-                            ? 'border-primary-500 bg-primary-50 shadow-lg'
-                            : 'border-gray-200 hover:border-primary-300 hover:shadow-md'
-                        }`}
-                      >
-                        <span className="text-3xl">{option.icon}</span>
-                        <span className="text-lg font-semibold text-gray-900">{option.label}</span>
-                      </button>
-                    ))}
+                  <div className="space-y-6">
+                    {/* Estimated Value */}
+                    <div>
+                      <label className="block text-sm font-semibold text-navy-700 mb-3">
+                        What's your home's estimated value? *
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { value: '0-200k', label: 'Under $200k', icon: '🏘️' },
+                          { value: '200k-400k', label: '$200k-$400k', icon: '🏠' },
+                          { value: '400k-600k', label: '$400k-$600k', icon: '🏡' },
+                          { value: '600k-1m', label: '$600k-$1M', icon: '🏰' },
+                          { value: '1m-plus', label: '$1M+', icon: '🏛️' },
+                          { value: 'not-sure', label: 'Not sure', icon: '🤔' },
+                        ].map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => handleFieldChange('estimatedValue', option.value)}
+                            className={`p-3 rounded-lg border-2 transition-all duration-200 flex items-center justify-center gap-2 ${
+                              formData.estimatedValue === option.value
+                                ? 'border-electric bg-electric-50 shadow-md'
+                                : 'border-pearl-300 hover:border-electric-300 bg-pearl-50'
+                            }`}
+                          >
+                            <span className="text-xl">{option.icon}</span>
+                            <span className="text-sm font-semibold text-navy">{option.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                      {errors.estimatedValue && (
+                        <p className="text-danger text-sm mt-2">{errors.estimatedValue}</p>
+                      )}
+                    </div>
+
+                    {/* Occupancy Status */}
+                    <div>
+                      <label className="block text-sm font-semibold text-navy-700 mb-3">
+                        Is the property currently occupied? *
+                      </label>
+                      <div className="space-y-2">
+                        {[
+                          { value: 'owner', label: 'Owner-occupied (I live here)', icon: '👨‍👩‍👧‍👦' },
+                          { value: 'tenant', label: 'Tenant-occupied (rental)', icon: '🏘️' },
+                          { value: 'vacant', label: 'Vacant', icon: '🏚️' },
+                        ].map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => handleFieldChange('occupiedStatus', option.value)}
+                            className={`w-full p-4 rounded-xl border-2 transition-all duration-200 flex items-center gap-3 ${
+                              formData.occupiedStatus === option.value
+                                ? 'border-electric bg-electric-50 shadow-md'
+                                : 'border-pearl-300 hover:border-electric-300 hover:shadow-sm bg-pearl-50'
+                            }`}
+                          >
+                            <span className="text-2xl">{option.icon}</span>
+                            <span className="text-base font-semibold text-navy">{option.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                      {errors.occupiedStatus && (
+                        <p className="text-danger text-sm mt-2">{errors.occupiedStatus}</p>
+                      )}
+                    </div>
+
+                    {/* Major Repairs Needed */}
+                    <div>
+                      <label className="block text-sm font-semibold text-navy-700 mb-3">
+                        Does your property need any major repairs? *
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        {[
+                          { value: 'no', label: 'No, move-in ready', icon: '✅' },
+                          { value: 'minor', label: 'Minor cosmetic fixes', icon: '🔧' },
+                          { value: 'major', label: 'Yes, major repairs needed', icon: '🚧' },
+                        ].map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => handleFieldChange('majorRepairs', option.value)}
+                            className={`p-4 rounded-xl border-2 transition-all duration-200 flex flex-col items-center gap-2 ${
+                              formData.majorRepairs === option.value
+                                ? 'border-electric bg-electric-50 shadow-md'
+                                : 'border-pearl-300 hover:border-electric-300 bg-pearl-50'
+                            }`}
+                          >
+                            <span className="text-3xl">{option.icon}</span>
+                            <span className="text-sm font-semibold text-navy text-center">{option.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                      {errors.majorRepairs && (
+                        <p className="text-danger text-sm mt-2">{errors.majorRepairs}</p>
+                      )}
+                    </div>
                   </div>
-                  {errors.estimatedValue && (
-                    <p className="text-red-500 text-sm text-center mt-2">{errors.estimatedValue}</p>
-                  )}
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      type="button"
+                      onClick={handleBack}
+                      className="flex-1 px-6 py-3 border-2 border-slate-300 text-slate-700 font-semibold rounded-xl hover:bg-pearl-50 transition-all"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleNext}
+                      className="flex-1 px-6 py-3 bg-gradient-to-r from-electric to-electric-600 text-white font-semibold rounded-xl hover:from-electric-600 hover:to-electric-700 transition-all shadow-lg"
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -494,10 +1128,10 @@ const LeadForm = () => {
               {currentStep === 6 && (
                 <div className="space-y-6">
                   <div className="text-center mb-8">
-                    <h2 className="text-3xl font-bold text-gray-900 mb-2">
+                    <h2 className="text-3xl font-bold text-navy mb-2">
                       Are you currently working with a realtor?
                     </h2>
-                    <p className="text-gray-600">Important for compliance purposes</p>
+                    <p className="text-slate">Important for compliance purposes</p>
                   </div>
 
                   <div className="space-y-3">
@@ -509,12 +1143,12 @@ const LeadForm = () => {
                       }}
                       className={`w-full p-5 rounded-xl border-2 transition-all duration-200 flex items-center gap-4 ${
                         formData.hasRealtor === false
-                          ? 'border-green-500 bg-green-50 shadow-lg'
-                          : 'border-gray-200 hover:border-green-300 hover:shadow-md'
+                          ? 'border-emerald bg-emerald-50 shadow-lg'
+                          : 'border-pearl-300 hover:border-emerald-300 hover:shadow-md bg-pearl-50'
                       }`}
                     >
                       <span className="text-3xl">✅</span>
-                      <span className="text-lg font-semibold text-gray-900">No, I need help finding one</span>
+                      <span className="text-lg font-semibold text-navy">No, I need help finding one</span>
                     </button>
 
                     <button
@@ -525,12 +1159,12 @@ const LeadForm = () => {
                       }}
                       className={`w-full p-5 rounded-xl border-2 transition-all duration-200 flex items-center gap-4 ${
                         formData.hasRealtor === true
-                          ? 'border-yellow-500 bg-yellow-50 shadow-lg'
-                          : 'border-gray-200 hover:border-yellow-300 hover:shadow-md'
+                          ? 'border-amber bg-amber-50 shadow-lg'
+                          : 'border-pearl-300 hover:border-amber-300 hover:shadow-md bg-pearl-50'
                       }`}
                     >
                       <span className="text-3xl">⚠️</span>
-                      <span className="text-lg font-semibold text-gray-900">Yes, I already have a realtor</span>
+                      <span className="text-lg font-semibold text-navy">Yes, I already have a realtor</span>
                     </button>
                   </div>
                 </div>
@@ -540,59 +1174,65 @@ const LeadForm = () => {
               {currentStep === 7 && (
                 <div className="space-y-6">
                   <div className="text-center mb-8">
-                    <h2 className="text-3xl font-bold text-gray-900 mb-2">
+                    <h2 className="text-3xl font-bold text-navy mb-2">
                       Almost done! How can we reach you?
                     </h2>
-                    <p className="text-gray-600">Your matched agent will contact you soon</p>
+                    <p className="text-slate">Your matched agent will contact you soon</p>
                   </div>
 
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <label className="block text-sm font-semibold text-navy-700 mb-2">
                         Full Name *
                       </label>
                       <input
                         type="text"
                         placeholder="John Doe"
                         value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        className={`w-full p-4 text-lg border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${
-                          errors.name ? 'border-red-500' : 'border-gray-300'
+                        onChange={(e) => handleFieldChange('name', e.target.value)}
+                        onFocus={handleFocus}
+                        onPaste={handlePaste}
+                        className={`w-full p-4 text-lg border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-electric transition-all ${
+                          errors.name ? 'border-danger' : 'border-pearl-300'
                         }`}
                       />
-                      {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
+                      {errors.name && <p className="text-danger text-sm mt-1">{errors.name}</p>}
                     </div>
 
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <label className="block text-sm font-semibold text-navy-700 mb-2">
                         Email Address *
                       </label>
                       <input
                         type="email"
                         placeholder="john@example.com"
                         value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        className={`w-full p-4 text-lg border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${
-                          errors.email ? 'border-red-500' : 'border-gray-300'
+                        onChange={(e) => handleFieldChange('email', e.target.value)}
+                        onFocus={handleFocus}
+                        onPaste={handlePaste}
+                        className={`w-full p-4 text-lg border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-electric transition-all ${
+                          errors.email ? 'border-danger' : 'border-pearl-300'
                         }`}
                       />
-                      {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
+                      {errors.email && <p className="text-danger text-sm mt-1">{errors.email}</p>}
                     </div>
 
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <label className="block text-sm font-semibold text-navy-700 mb-2">
                         Phone Number *
                       </label>
                       <input
                         type="tel"
                         placeholder="(555) 555-5555"
                         value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        className={`w-full p-4 text-lg border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${
-                          errors.phone ? 'border-red-500' : 'border-gray-300'
+                        onChange={(e) => handleFieldChange('phone', e.target.value)}
+                        onFocus={handleFocus}
+                        onPaste={handlePaste}
+                        className={`w-full p-4 text-lg border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-electric transition-all ${
+                          errors.phone ? 'border-danger' : 'border-pearl-300'
                         }`}
                       />
-                      {errors.phone && <p className="text-red-500 text-sm mt-1">{errors.phone}</p>}
+                      {errors.phone && <p className="text-danger text-sm mt-1">{errors.phone}</p>}
                     </div>
                   </div>
                 </div>
@@ -603,32 +1243,118 @@ const LeadForm = () => {
                 <div className="space-y-6">
                   <div className="text-center mb-8">
                     <div className="text-6xl mb-4">🎯</div>
-                    <h2 className="text-3xl font-bold text-gray-900 mb-2">
+                    <h2 className="text-3xl font-bold text-navy mb-2">
                       You're all set!
                     </h2>
-                    <p className="text-gray-600">Ready to match you with the perfect agent</p>
+                    <p className="text-slate">Ready to match you with the perfect agent</p>
                   </div>
 
-                  <div className="bg-gradient-to-r from-primary-50 to-secondary-50 rounded-2xl p-6 mb-6">
-                    <h3 className="font-bold text-gray-800 mb-4">Your Information:</h3>
-                    <div className="space-y-2 text-sm text-gray-700">
-                      <p><strong>Type:</strong> {formData.leadType === 'buyer' ? 'Buyer' : 'Seller'}</p>
-                      <p><strong>Motivation:</strong> {formData.motivation}</p>
-                      <p><strong>Timeline:</strong> {formData.timeline}</p>
-                      <p><strong>Location:</strong> {formData.location}</p>
-                      <p><strong>Contact:</strong> {formData.name} ({formData.email})</p>
+                  <div className="bg-gradient-to-r from-electric-50 to-electric-100 rounded-2xl p-6 mb-6">
+                    <h3 className="font-bold text-navy mb-4">Review Your Information:</h3>
+                    <div className="space-y-3 text-sm">
+                      {/* Lead Type */}
+                      <div className="flex justify-between py-2 border-b border-electric-200">
+                        <span className="font-semibold text-navy-700">Lead Type:</span>
+                        <span className="text-navy">{formatFieldValue('leadType', formData.leadType)}</span>
+                      </div>
+
+                      {/* Motivation */}
+                      <div className="flex justify-between py-2 border-b border-electric-200">
+                        <span className="font-semibold text-navy-700">Motivation:</span>
+                        <span className="text-navy text-right max-w-xs">{formatFieldValue('motivation', formData.motivation)}</span>
+                      </div>
+
+                      {/* Timeline */}
+                      <div className="flex justify-between py-2 border-b border-electric-200">
+                        <span className="font-semibold text-navy-700">Timeline:</span>
+                        <span className="text-navy text-right max-w-xs">{formatFieldValue('timeline', formData.timeline)}</span>
+                      </div>
+
+                      {/* Location */}
+                      <div className="flex justify-between py-2 border-b border-electric-200">
+                        <span className="font-semibold text-navy-700">Location:</span>
+                        <span className="text-navy">{formData.location}</span>
+                      </div>
+
+                      {/* Buyer-specific fields */}
+                      {formData.leadType === 'buyer' && (
+                        <>
+                          {formData.preApproved && (
+                            <div className="flex justify-between py-2 border-b border-electric-200">
+                              <span className="font-semibold text-navy-700">Pre-Approval:</span>
+                              <span className="text-navy text-right max-w-xs">{formatFieldValue('preApproved', formData.preApproved)}</span>
+                            </div>
+                          )}
+                          {formData.priceRange && (
+                            <div className="flex justify-between py-2 border-b border-electric-200">
+                              <span className="font-semibold text-navy-700">Budget Range:</span>
+                              <span className="text-navy">{formatFieldValue('priceRange', formData.priceRange)}</span>
+                            </div>
+                          )}
+                          {formData.rentingOrSelling && (
+                            <div className="flex justify-between py-2 border-b border-electric-200">
+                              <span className="font-semibold text-navy-700">Current Situation:</span>
+                              <span className="text-navy text-right max-w-xs">{formatFieldValue('rentingOrSelling', formData.rentingOrSelling)}</span>
+                            </div>
+                          )}
+                          {formData.earnestMoney && (
+                            <div className="flex justify-between py-2 border-b border-electric-200">
+                              <span className="font-semibold text-navy-700">Earnest Money:</span>
+                              <span className="text-navy">{formatFieldValue('earnestMoney', formData.earnestMoney)}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {/* Seller-specific fields */}
+                      {formData.leadType === 'seller' && (
+                        <>
+                          {formData.estimatedValue && (
+                            <div className="flex justify-between py-2 border-b border-electric-200">
+                              <span className="font-semibold text-navy-700">Property Value:</span>
+                              <span className="text-navy">{formatFieldValue('estimatedValue', formData.estimatedValue)}</span>
+                            </div>
+                          )}
+                          {formData.occupiedStatus && (
+                            <div className="flex justify-between py-2 border-b border-electric-200">
+                              <span className="font-semibold text-navy-700">Occupancy:</span>
+                              <span className="text-navy text-right max-w-xs">{formatFieldValue('occupiedStatus', formData.occupiedStatus)}</span>
+                            </div>
+                          )}
+                          {formData.majorRepairs && (
+                            <div className="flex justify-between py-2 border-b border-electric-200">
+                              <span className="font-semibold text-navy-700">Repairs Needed:</span>
+                              <span className="text-navy text-right max-w-xs">{formatFieldValue('majorRepairs', formData.majorRepairs)}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {/* Contact Info */}
+                      <div className="flex justify-between py-2 border-b border-electric-200">
+                        <span className="font-semibold text-navy-700">Name:</span>
+                        <span className="text-navy">{formData.name}</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-electric-200">
+                        <span className="font-semibold text-navy-700">Email:</span>
+                        <span className="text-navy">{formData.email}</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-electric-200">
+                        <span className="font-semibold text-navy-700">Phone:</span>
+                        <span className="text-navy">{formData.phone}</span>
+                      </div>
                     </div>
                   </div>
 
                   {errors.submit && (
-                    <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
-                      <p className="text-red-800 text-sm">{errors.submit}</p>
+                    <div className="bg-danger-50 border border-danger-200 rounded-xl p-4 mb-4">
+                      <p className="text-danger-800 text-sm">{errors.submit}</p>
                     </div>
                   )}
 
                   <button
                     onClick={handleSubmit}
-                    className="w-full bg-gradient-to-r from-primary-500 to-secondary-500 hover:from-primary-600 hover:to-secondary-600 text-white font-bold text-xl py-5 px-8 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-xl"
+                    className="w-full bg-gradient-to-r from-electric to-electric-600 hover:from-electric-600 hover:to-electric-700 text-white font-bold text-xl py-5 px-8 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-xl"
                   >
                     🚀 Match Me With My Realtor
                   </button>
@@ -637,10 +1363,10 @@ const LeadForm = () => {
 
               {/* Navigation Buttons */}
               {currentStep < 7 && currentStep !== 1 && (
-                <div className="flex justify-between mt-8 pt-6 border-t border-gray-200">
+                <div className="flex justify-between mt-8 pt-6 border-t border-pearl-300">
                   <button
                     onClick={handleBack}
-                    className="px-6 py-3 text-gray-600 hover:text-gray-900 font-semibold transition-colors flex items-center gap-2"
+                    className="px-6 py-3 text-slate-600 hover:text-navy font-semibold transition-colors flex items-center gap-2"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -651,10 +1377,10 @@ const LeadForm = () => {
               )}
 
               {currentStep === 7 && (
-                <div className="flex justify-between mt-8 pt-6 border-t border-gray-200">
+                <div className="flex justify-between mt-8 pt-6 border-t border-pearl-300">
                   <button
                     onClick={handleBack}
-                    className="px-6 py-3 text-gray-600 hover:text-gray-900 font-semibold transition-colors flex items-center gap-2"
+                    className="px-6 py-3 text-slate-600 hover:text-navy font-semibold transition-colors flex items-center gap-2"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -663,7 +1389,7 @@ const LeadForm = () => {
                   </button>
                   <button
                     onClick={handleNext}
-                    className="px-8 py-3 bg-primary-500 hover:bg-primary-600 text-white font-semibold rounded-xl transition-colors flex items-center gap-2"
+                    className="px-8 py-3 bg-electric hover:bg-electric-600 text-white font-semibold rounded-xl transition-colors flex items-center gap-2"
                   >
                     Review & Submit
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -677,7 +1403,7 @@ const LeadForm = () => {
                 <div className="flex justify-center mt-6">
                   <button
                     onClick={handleBack}
-                    className="px-6 py-3 text-gray-600 hover:text-gray-900 font-semibold transition-colors flex items-center gap-2"
+                    className="px-6 py-3 text-slate-600 hover:text-navy font-semibold transition-colors flex items-center gap-2"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -691,7 +1417,7 @@ const LeadForm = () => {
         </div>
 
         <div className="text-center mt-8">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-slate-500">
             🔒 Your information is secure and will only be shared with your matched agent
           </p>
         </div>
