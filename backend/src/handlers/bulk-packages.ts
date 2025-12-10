@@ -45,6 +45,11 @@ export const handler = async (event: APIGatewayEvent) => {
       return await purchaseBulkPackage(agentId, event.pathParameters.packageId);
     }
 
+    // POST /bulk-packages/custom - Purchase custom count of leads from pool
+    if (httpMethod === 'POST' && path.endsWith('/bulk-packages/custom')) {
+      return await purchaseCustomBulkLeads(agentId, event);
+    }
+
     return ResponseBuilder.error('Invalid request', 400);
   } catch (error: any) {
     console.error('Bulk packages error:', error);
@@ -117,7 +122,7 @@ async function createBulkPackage(event: APIGatewayEvent) {
 
     // Calculate total price
     const totalPrice = body.leadCount * body.pricePerLead;
-    const regularPrice = body.leadCount * 80; // Assuming $80 base price
+    const regularPrice = body.leadCount * 20; // $20 base price per lead
     const discount = regularPrice - totalPrice;
     const discountPercent = Math.round((discount / regularPrice) * 100);
 
@@ -325,6 +330,113 @@ async function purchaseBulkPackage(agentId: string, packageId: string) {
     });
   } catch (error) {
     console.error('Purchase bulk package error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Purchase custom count of leads from available pool
+ */
+async function purchaseCustomBulkLeads(agentId: string, event: APIGatewayEvent) {
+  try {
+    const body = RequestValidator.parseBody(event);
+    
+    if (!body.leadCount || body.leadCount < 1) {
+      return ResponseBuilder.error('Lead count must be at least 1', 400);
+    }
+
+    if (!body.pricePerLead || body.pricePerLead < 0) {
+      return ResponseBuilder.error('Price per lead is required', 400);
+    }
+
+    // Get available low-score leads (score 4 or below, not claimed)
+    const allLeads = await DynamoDBService.scanItems(
+      config.LEADS_TABLE_NAME,
+      '#status = :available AND score <= :maxScore',
+      {
+        ':available': 'available',
+        ':maxScore': 4,
+      },
+      {
+        '#status': 'status',
+      }
+    );
+
+    // Filter out expired leads
+    const now_ts = Math.floor(Date.now() / 1000);
+    const availableLeads = allLeads.filter((lead: any) => {
+      return !lead.claimedBy && (!lead.expiresAt || lead.expiresAt > now_ts);
+    });
+
+    if (availableLeads.length < body.leadCount) {
+      return ResponseBuilder.error(
+        `Not enough leads available. Requested: ${body.leadCount}, Available: ${availableLeads.length}`,
+        400
+      );
+    }
+
+    // Select the requested number of leads
+    const selectedLeads = availableLeads.slice(0, body.leadCount);
+    const leadIds = selectedLeads.map((lead: any) => lead.leadId);
+
+    // Calculate total price
+    const totalPrice = body.leadCount * body.pricePerLead;
+    const regularPrice = body.leadCount * 20;
+    const discount = regularPrice - totalPrice;
+
+    const transactionId = `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const timestamp = new Date().toISOString();
+
+    // Create individual transaction records for each lead (for compatibility with getAgentProfile)
+    const transactionPromises = selectedLeads.map((lead: any, index: number) => {
+      const txn = {
+        transactionId: `${transactionId}_${index}`,
+        timestamp,
+        agentId,
+        leadId: lead.leadId, // Single leadId for compatibility
+        type: 'custom_bulk',
+        leadCount: 1,
+        amount: body.pricePerLead,
+        status: 'completed',
+        paymentMethod: 'stripe',
+        createdAt: timestamp,
+        bulkTransactionId: transactionId, // Reference to parent bulk transaction
+      };
+      return DynamoDBService.putItem(config.TRANSACTIONS_TABLE_NAME, txn);
+    });
+
+    await Promise.all(transactionPromises);
+
+    // Mark all selected leads as claimed
+    const updatePromises = selectedLeads.map((lead: any) =>
+      DynamoDBService.updateItem(
+        config.LEADS_TABLE_NAME,
+        { leadId: lead.leadId, timestamp: lead.timestamp },
+        'SET #status = :claimed, claimedBy = :agentId, claimedAt = :now, transactionId = :txnId, funnelStage = :stage',
+        {
+          ':claimed': 'claimed',
+          ':agentId': agentId,
+          ':now': timestamp,
+          ':txnId': transactionId,
+          ':stage': 'new_match',
+        },
+        {
+          '#status': 'status',
+        }
+      )
+    );
+
+    await Promise.all(updatePromises);
+
+    return ResponseBuilder.success({
+      transactionId,
+      leadCount: body.leadCount,
+      totalAmount: totalPrice,
+      leads: selectedLeads,
+      message: `Successfully purchased ${body.leadCount} leads for $${totalPrice}`,
+    });
+  } catch (error) {
+    console.error('Purchase custom bulk leads error:', error);
     throw error;
   }
 }

@@ -10,10 +10,12 @@
 .auth-container {
   background: white;
   border-radius: 16px;
-  padding: 3rem;
+  padding: 2rem;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  max-width: 480px;
+  max-width: 500px;
   width: 100%;
+  margin: 0 auto;
+  overflow: hidden;
 }
 
 .auth-header {
@@ -30,6 +32,30 @@
 .auth-subtitle {
   color: #718096;
   font-size: 1rem;
+}
+
+/* Force Amplify Authenticator to stay within container width */
+[data-amplify-authenticator] {
+  max-width: 100% !important;
+  width: 100% !important;
+}
+
+[data-amplify-authenticator] > div {
+  max-width: 100% !important;
+  width: 100% !important;
+  margin: 0 !important;
+}
+
+/* Force all Amplify form elements to fit */
+[data-amplify-authenticator] form {
+  max-width: 100% !important;
+  width: 100% !important;
+}
+
+[data-amplify-authenticator] input,
+[data-amplify-authenticator] button {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 .auth-footer {

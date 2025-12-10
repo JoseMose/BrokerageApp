@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { bulkPackagesAPI, paymentAPI } from '../utils/api';
 import { stripePromise } from '../utils/stripe';
@@ -23,6 +24,32 @@ function PaymentModal({ pkg, onClose, onSuccess }) {
     setError(null);
 
     try {
+      // For custom packages, purchase directly from the pool
+      if (pkg.isCustom) {
+        const response = await bulkPackagesAPI.purchaseCustomBulk(
+          pkg.leadCount,
+          pkg.pricePerLead
+        );
+
+        if (response.data.success || response.data.transaction) {
+          onSuccess({
+            success: true,
+            package: {
+              leadCount: pkg.leadCount,
+              totalPrice: pkg.totalPrice,
+            },
+            transaction: response.data.transaction,
+            leads: response.data.leads,
+          });
+          return;
+        } else {
+          setError(response.data.message || 'Purchase failed');
+          setProcessing(false);
+          return;
+        }
+      }
+
+      // For pre-built packages, use Stripe payment
       const cardElement = elements.getElement(CardElement);
 
       // Create payment method
@@ -94,33 +121,42 @@ function PaymentModal({ pkg, onClose, onSuccess }) {
           <div className="summary-row savings-row">
             <span>You save:</span>
             <strong className="savings-amount">
-              {formatCurrency((pkg.leadCount * 80) - pkg.totalPrice)} ({pkg.discountPercent}% off)
+              {formatCurrency((pkg.leadCount * 20) - pkg.totalPrice)} ({pkg.discountPercent}% off)
             </strong>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="payment-form">
-          <div className="form-group">
-            <label>Card Information</label>
-            <div className="card-element-wrapper">
-              <CardElement
-                options={{
-                  style: {
-                    base: {
-                      fontSize: '16px',
-                      color: '#424770',
-                      '::placeholder': {
-                        color: '#aab7c4',
+          {!pkg.isCustom && (
+            <div className="form-group">
+              <label>Card Information</label>
+              <div className="card-element-wrapper">
+                <CardElement
+                  options={{
+                    style: {
+                      base: {
+                        fontSize: '16px',
+                        color: '#424770',
+                        '::placeholder': {
+                          color: '#aab7c4',
+                        },
+                      },
+                      invalid: {
+                        color: '#9e2146',
                       },
                     },
-                    invalid: {
-                      color: '#9e2146',
-                    },
-                  },
-                }}
-              />
+                  }}
+                />
+              </div>
             </div>
-          </div>
+          )}
+
+          {pkg.isCustom && (
+            <div className="alert alert-info">
+              <span className="alert-icon">ℹ️</span>
+              Click "Confirm Purchase" to get {pkg.leadCount} leads from the available pool
+            </div>
+          )}
 
           {error && (
             <div className="alert alert-error">
@@ -141,13 +177,15 @@ function PaymentModal({ pkg, onClose, onSuccess }) {
             <button
               type="submit"
               className="btn btn-primary"
-              disabled={!stripe || processing}
+              disabled={pkg.isCustom ? processing : (!stripe || processing)}
             >
               {processing ? (
                 <>
                   <span className="spinner"></span>
                   Processing...
                 </>
+              ) : pkg.isCustom ? (
+                <>Confirm Purchase - {formatCurrency(pkg.totalPrice)}</>
               ) : (
                 <>Pay {formatCurrency(pkg.totalPrice)}</>
               )}
@@ -160,14 +198,13 @@ function PaymentModal({ pkg, onClose, onSuccess }) {
 }
 
 const BulkLeads = () => {
-  const [packages, setPackages] = useState([]);
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [selectedPackage, setSelectedPackage] = useState(null);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [availableLowScoreLeads, setAvailableLowScoreLeads] = useState(0);
-  const [customLeadCount, setCustomLeadCount] = useState(0);
-  const [showCustomPackage, setShowCustomPackage] = useState(false);
+  const [customLeadCount, setCustomLeadCount] = useState(10);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -186,11 +223,8 @@ const BulkLeads = () => {
       const response = await bulkPackagesAPI.getAvailablePackages();
       
       if (!signal?.aborted) {
-        const pkgs = response.data.packages || response.data.data?.packages || [];
-        setPackages(pkgs);
-        
         // Get count of low-score leads (4 or below)
-        const lowScoreCount = response.data.availableLowScoreLeads || 0;
+        const lowScoreCount = response.data.data?.availableLowScoreLeads || response.data.availableLowScoreLeads || 0;
         setAvailableLowScoreLeads(lowScoreCount);
       }
     } catch (err) {
@@ -199,7 +233,7 @@ const BulkLeads = () => {
       }
       console.error('Error fetching packages:', err);
       if (!signal?.aborted) {
-        setError(err.response?.data?.message || 'Failed to load bulk packages');
+        setError(err.response?.data?.message || 'Failed to load available leads');
       }
     } finally {
       if (!signal?.aborted) {
@@ -208,25 +242,19 @@ const BulkLeads = () => {
     }
   };
 
-  const handlePurchase = (pkg) => {
-    console.log('Purchase clicked for package:', pkg);
-    setSelectedPackage(pkg);
-    setError(null);
-  };
-
   const calculatePricePerLead = (leadCount) => {
-    // Bulk discount tiers
-    if (leadCount === 0) return 0;  // No leads selected
-    if (leadCount >= 100) return 10;  // 87.5% off ($80 -> $10)
-    if (leadCount >= 50) return 20;   // 75% off ($80 -> $20)
-    if (leadCount >= 25) return 30;   // 62.5% off ($80 -> $30)
-    if (leadCount >= 10) return 40;   // 50% off ($80 -> $40)
-    return 80; // Regular price for 1-9 leads
+    // Bulk discount tiers - much more affordable!
+    if (leadCount < 10) return 20;  // Less than 10 leads, regular price
+    if (leadCount >= 100) return 2;   // 90% off ($20 -> $2)
+    if (leadCount >= 50) return 3;    // 85% off ($20 -> $3)
+    if (leadCount >= 25) return 4;    // 80% off ($20 -> $4)
+    if (leadCount >= 10) return 5;    // 75% off ($20 -> $5)
+    return 20; // Regular price for 1-9 leads
   };
 
   const calculateDiscount = (leadCount) => {
     const pricePerLead = calculatePricePerLead(leadCount);
-    return Math.round(((80 - pricePerLead) / 80) * 100);
+    return Math.round(((20 - pricePerLead) / 20) * 100);
   };
 
   const handleCustomPackagePurchase = () => {
@@ -244,14 +272,14 @@ const BulkLeads = () => {
   };
 
   const handlePaymentSuccess = async (data) => {
-    setSuccessMessage(`Successfully purchased ${data.package?.leadCount || 'bulk'} leads!`);
+    const leadCount = data.package?.leadCount || selectedPackage?.leadCount || 0;
+    setSuccessMessage(`Successfully purchased ${leadCount} leads! Redirecting to My Leads...`);
     setSelectedPackage(null);
     
-    // Refresh packages list
-    await fetchPackages();
-    
-    // Clear success message after 5 seconds
-    setTimeout(() => setSuccessMessage(null), 5000);
+    // Navigate to My Leads after a brief delay
+    setTimeout(() => {
+      navigate('/history');
+    }, 2000);
   };
 
   const handleCloseModal = () => {
@@ -287,7 +315,7 @@ const BulkLeads = () => {
       <div className="bulk-leads-header">
         <h1>Bulk Lead Packages</h1>
         <p className="subtitle">
-          Get discounted bundles of 50-100 leads. Perfect for volume-based prospecting.
+          Choose how many leads you want - the more you buy, the cheaper they get!
         </p>
       </div>
 
@@ -305,186 +333,113 @@ const BulkLeads = () => {
         </div>
       )}
 
-      {/* Custom Package Builder */}
+      {/* Custom Package Builder - Always Visible */}
       <div className="custom-package-section">
         <div className="custom-package-header">
           <div className="custom-header-content">
-            <h2>🎯 Custom Bulk Package</h2>
+            <h2>🎯 Select Your Package</h2>
             <p className="low-score-count">
-              <strong>{availableLowScoreLeads}</strong> leads with score 4 or below available
+              <strong>{availableLowScoreLeads}</strong> leads available (Score 4 or below)
             </p>
           </div>
-          <button 
-            className="btn btn-outline"
-            onClick={() => setShowCustomPackage(!showCustomPackage)}
-          >
-            {showCustomPackage ? 'Hide Builder' : 'Build Custom Package'}
-          </button>
         </div>
 
-        {showCustomPackage && (
-          <div className="custom-package-builder">
-            <div className="builder-content">
-              <div className="slider-section">
-                <label htmlFor="lead-count-slider" className="slider-label">
-                  How many leads do you want?
-                </label>
-                <div className="slider-value-display">
-                  <span className="lead-count-badge">{customLeadCount} Leads</span>
-                </div>
-                <input
-                  id="lead-count-slider"
-                  type="range"
-                  min="0"
-                  max={Math.min(availableLowScoreLeads, 200)}
-                  step="5"
-                  value={customLeadCount}
-                  onChange={(e) => setCustomLeadCount(parseInt(e.target.value))}
-                  className="lead-count-slider"
-                  disabled={availableLowScoreLeads === 0}
-                />
-                <div className="slider-range">
-                  <span>0</span>
-                  <span>{Math.min(availableLowScoreLeads, 200)}</span>
-                </div>
+        <div className="custom-package-builder active">
+          <div className="builder-content">
+            <div className="slider-section">
+              <label htmlFor="lead-count-slider" className="slider-label">
+                How many leads do you want?
+              </label>
+              <div className="slider-value-display">
+                <span className="lead-count-badge">{customLeadCount} Leads</span>
               </div>
-
-              <div className="custom-pricing">
-                <div className="pricing-row">
-                  <span>Price per lead:</span>
-                  <strong>{formatCurrency(calculatePricePerLead(customLeadCount))}</strong>
-                </div>
-                <div className="pricing-row">
-                  <span>Regular price:</span>
-                  <span className="strikethrough">{formatCurrency(customLeadCount * 80)}</span>
-                </div>
-                <div className="pricing-row discount-row">
-                  <span>Discount:</span>
-                  <strong className="discount-text">-{calculateDiscount(customLeadCount)}%</strong>
-                </div>
-                <div className="pricing-row total-row">
-                  <span>Total:</span>
-                  <strong className="total-price">{formatCurrency(customLeadCount * calculatePricePerLead(customLeadCount))}</strong>
-                </div>
-                <div className="pricing-row savings-row">
-                  <span>You save:</span>
-                  <strong className="savings-amount">
-                    {formatCurrency((customLeadCount * 80) - (customLeadCount * calculatePricePerLead(customLeadCount)))}
-                  </strong>
-                </div>
+              <input
+                id="lead-count-slider"
+                type="range"
+                min="10"
+                max={availableLowScoreLeads >= 200 ? 200 : Math.max(10, availableLowScoreLeads)}
+                step="5"
+                value={customLeadCount}
+                onChange={(e) => setCustomLeadCount(parseInt(e.target.value))}
+                className="lead-count-slider"
+                disabled={availableLowScoreLeads === 0}
+              />
+              <div className="slider-range">
+                <span>10</span>
+                <span>{availableLowScoreLeads >= 200 ? 200 : Math.max(10, availableLowScoreLeads)}</span>
               </div>
-
-              <button
-                className="btn btn-primary btn-large"
-                onClick={() => handleCustomPackagePurchase()}
-                disabled={availableLowScoreLeads === 0 || customLeadCount === 0}
-              >
-                {availableLowScoreLeads === 0 
-                  ? 'No Leads Available' 
-                  : customLeadCount === 0
-                  ? 'Select Lead Quantity'
-                  : `Purchase ${customLeadCount} Leads - ${formatCurrency(customLeadCount * calculatePricePerLead(customLeadCount))}`
-                }
-              </button>
             </div>
+
+            <div className="custom-pricing">
+              <div className="pricing-row">
+                <span>Price per lead:</span>
+                <strong>{formatCurrency(calculatePricePerLead(customLeadCount))}</strong>
+              </div>
+              <div className="pricing-row">
+                <span>Regular price:</span>
+                <span className="strikethrough">{formatCurrency(customLeadCount * 20)}</span>
+              </div>
+              <div className="pricing-row discount-row">
+                <span>Discount:</span>
+                <strong className="discount-text">-{calculateDiscount(customLeadCount)}%</strong>
+              </div>
+              <div className="pricing-row total-row">
+                <span>Total:</span>
+                <strong className="total-price">{formatCurrency(customLeadCount * calculatePricePerLead(customLeadCount))}</strong>
+              </div>
+              <div className="pricing-row savings-row">
+                <span>You save:</span>
+                <strong className="savings-amount">
+                  {formatCurrency((customLeadCount * 20) - (customLeadCount * calculatePricePerLead(customLeadCount)))}
+                </strong>
+              </div>
+            </div>
+
+            <button
+              className="btn btn-primary btn-large"
+              onClick={() => handleCustomPackagePurchase()}
+              disabled={availableLowScoreLeads === 0 || customLeadCount < 10}
+            >
+              {availableLowScoreLeads === 0 
+                ? 'No Leads Available' 
+                : customLeadCount < 10
+                ? 'Select At Least 10 Leads'
+                : `Purchase ${customLeadCount} Leads - ${formatCurrency(customLeadCount * calculatePricePerLead(customLeadCount))}`
+              }
+            </button>
           </div>
-        )}
+        </div>
       </div>
 
-      {packages.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-icon">📦</div>
-          <h2>No Bulk Packages Available</h2>
-          <p>Check back later for new bulk lead packages.</p>
-        </div>
-      ) : (
-        <div className="packages-grid">
-          {packages.map((pkg) => (
-            <div key={pkg.packageId} className="package-card">
-              <div className="package-header">
-                <div className="package-badge">
-                  <span className="badge-label">Bulk Package</span>
-                  <span className="discount-badge">-{pkg.discountPercent}%</span>
-                </div>
-                <h3>{pkg.leadCount} Leads</h3>
-              </div>
-
-              <div className="package-details">
-                <div className="detail-row">
-                  <span className="detail-label">Price per Lead:</span>
-                  <span className="detail-value">{formatCurrency(pkg.pricePerLead)}</span>
-                </div>
-                <div className="detail-row">
-                  <span className="detail-label">Regular Price:</span>
-                  <span className="detail-value strikethrough">
-                    {formatCurrency(pkg.leadCount * 80)}
-                  </span>
-                </div>
-                <div className="detail-row highlight">
-                  <span className="detail-label">Total Price:</span>
-                  <span className="detail-value total-price">
-                    {formatCurrency(pkg.totalPrice)}
-                  </span>
-                </div>
-                <div className="detail-row">
-                  <span className="detail-label">You Save:</span>
-                  <span className="detail-value savings">
-                    {formatCurrency((pkg.leadCount * 80) - pkg.totalPrice)}
-                  </span>
-                </div>
-              </div>
-
-              <div className="package-meta">
-                <p className="package-date">
-                  Created: {formatDate(pkg.createdAt)}
-                </p>
-                {pkg.description && (
-                  <p className="package-description">{pkg.description}</p>
-                )}
-              </div>
-
-              <button
-                className="btn btn-primary purchase-btn"
-                onClick={() => handlePurchase(pkg)}
-              >
-                Purchase Package - {formatCurrency(pkg.totalPrice)}
-              </button>
-
-              <div className="package-info">
-                <p className="info-text">
-                  ✓ All {pkg.leadCount} leads unlocked immediately<br />
-                  ✓ Full contact information included<br />
-                  ✓ CSV export available after purchase
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
+      {/* Pricing Tiers Info */}
       <div className="bulk-leads-info">
-        <h2>About Bulk Packages</h2>
+        <h2>Volume Discounts</h2>
         <div className="info-grid">
           <div className="info-card">
-            <div className="info-icon">💰</div>
-            <h3>Save Money</h3>
-            <p>Get leads at 50-87% off regular pricing when you buy in bulk.</p>
+            <div className="info-icon">🎯</div>
+            <h3>10-24 Leads</h3>
+            <p><strong>$5 per lead</strong><br/>75% off regular price</p>
           </div>
           <div className="info-card">
             <div className="info-icon">📊</div>
-            <h3>Volume Prospecting</h3>
-            <p>Perfect for agents who prefer quantity and want to build their own pipeline.</p>
+            <h3>25-49 Leads</h3>
+            <p><strong>$4 per lead</strong><br/>80% off regular price</p>
+          </div>
+          <div className="info-card">
+            <div className="info-icon">💰</div>
+            <h3>50-99 Leads</h3>
+            <p><strong>$3 per lead</strong><br/>85% off regular price</p>
           </div>
           <div className="info-card">
             <div className="info-icon">⚡</div>
-            <h3>Instant Access</h3>
-            <p>All leads are unlocked immediately upon purchase with full contact details.</p>
+            <h3>100+ Leads</h3>
+            <p><strong>$2 per lead</strong><br/>90% off regular price</p>
           </div>
-          <div className="info-card">
-            <div className="info-icon">📥</div>
-            <h3>Easy Export</h3>
-            <p>Download all lead data as CSV for easy import into your CRM system.</p>
-          </div>
+        </div>
+        <div className="info-features">
+          <p>✓ All leads unlocked immediately with full contact information</p>
+          <p>✓ Leads appear in your My Leads section at the top of your funnel</p>
+          <p>✓ Each lead is exclusive - sold to one realtor only</p>
         </div>
       </div>
 

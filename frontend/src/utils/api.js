@@ -35,6 +35,8 @@ export const agentAPI = {
   getAssignedLeads: () => apiClient.get('/agents/assigned-leads'),
   passLead: (leadId) => apiClient.post(`/agents/pass-lead/${leadId}`),
   getAIRecommendations: (leads) => apiClient.post('/agents/ai-recommendations', { leads }),
+  updateLeadStage: (leadId, funnelStage) => apiClient.put(`/agents/leads/${leadId}`, { funnelStage }),
+  logLeadActivity: (leadId, activity) => apiClient.post(`/agents/leads/${leadId}/activity`, activity),
 };
 
 // Marketplace APIs
@@ -100,6 +102,7 @@ export const adminAPI = {
 export const bulkPackagesAPI = {
   getAvailablePackages: () => apiClient.get('/bulk-packages'),
   purchasePackage: (packageId) => apiClient.post(`/bulk-packages/${packageId}/purchase`),
+  purchaseCustomBulk: (leadCount, pricePerLead) => apiClient.post('/bulk-packages/custom', { leadCount, pricePerLead }),
 };
 
 export default apiClient;

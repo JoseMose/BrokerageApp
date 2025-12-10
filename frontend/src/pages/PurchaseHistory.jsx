@@ -15,6 +15,45 @@ const FUNNEL_STAGES = [
   { id: 'closed', label: 'Closed', icon: '🏆', description: 'Deal completed!' },
 ];
 
+// Format questionnaire field names to readable labels
+const formatQuestionLabel = (key) => {
+  const labels = {
+    timeline: '⏱️ Timeline',
+    propertyType: '🏠 Property Type',
+    budget: '💰 Budget',
+    bedrooms: '🛏️ Bedrooms',
+    location: '📍 Location',
+    prequalified: '✅ Pre-qualified',
+    workingWithAgent: '🤝 Working with Agent',
+  };
+  return labels[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+};
+
+// Format questionnaire answer values to readable text
+const formatAnswerValue = (value) => {
+  const valueMap = {
+    'asap': 'ASAP (Less than 30 days)',
+    '1-3-months': '1-3 Months',
+    '3-6-months': '3-6 Months',
+    '6-months': '6 Months',
+    'next-year': 'Next Year',
+    'just-browsing': 'Just Browsing',
+    'single-family': 'Single Family Home',
+    'condo': 'Condo',
+    'townhouse': 'Townhouse',
+    'multi-family': 'Multi-family',
+    'land': 'Land',
+    'under-300k': 'Under $300k',
+    '300k-500k': '$300k - $500k',
+    '500k-750k': '$500k - $750k',
+    '750k-1m': '$750k - $1M',
+    'over-1m': 'Over $1M',
+    'yes': 'Yes',
+    'no': 'No',
+  };
+  return valueMap[value] || String(value);
+};
+
 function PurchaseHistory() {
   const [purchases, setPurchases] = useState([]);
   const [bulkPackages, setBulkPackages] = useState([]);
@@ -61,6 +100,34 @@ function PurchaseHistory() {
       
       setBulkPackages(packages);
       setPurchases(individualLeads);
+
+      // Load activities from database into state
+      const activitiesFromDB = {};
+      individualLeads.forEach(({ transaction, lead }) => {
+        if (lead?.activities && Array.isArray(lead.activities)) {
+          activitiesFromDB[transaction.leadId] = lead.activities;
+        }
+      });
+      
+      // Merge with localStorage activities (localStorage takes precedence for newer activities)
+      setLeadActivities(prev => {
+        const merged = { ...activitiesFromDB };
+        Object.keys(prev).forEach(leadId => {
+          if (merged[leadId]) {
+            // Merge and deduplicate by timestamp
+            const combined = [...merged[leadId], ...prev[leadId]];
+            const unique = Array.from(
+              new Map(combined.map(act => [act.timestamp, act])).values()
+            );
+            merged[leadId] = unique.sort((a, b) => 
+              new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+            );
+          } else {
+            merged[leadId] = prev[leadId];
+          }
+        });
+        return merged;
+      });
     } catch (err) {
       console.error('Error fetching my leads:', err);
       setError(err.response?.data?.error || 'Failed to load my leads');
@@ -70,15 +137,20 @@ function PurchaseHistory() {
   };
 
   const updateLeadStage = async (leadId, newStage) => {
-    // TODO: Add API call to update lead stage in backend
-    console.log('Update lead', leadId, 'to stage', newStage);
-    
-    // For now, update locally
-    setPurchases(prev => prev.map(p => 
-      p.transaction.leadId === leadId 
-        ? { ...p, lead: { ...p.lead, funnelStage: newStage } }
-        : p
-    ));
+    try {
+      // Update in backend
+      await agentAPI.updateLeadStage(leadId, newStage);
+      
+      // Update locally
+      setPurchases(prev => prev.map(p => 
+        p.transaction.leadId === leadId 
+          ? { ...p, lead: { ...p.lead, funnelStage: newStage } }
+          : p
+      ));
+    } catch (err) {
+      console.error('Error updating lead stage:', err);
+      setError('Failed to update lead stage');
+    }
   };
 
   const toggleActivityForm = (leadId) => {
@@ -106,7 +178,7 @@ function PurchaseHistory() {
     }));
   };
 
-  const logActivity = (leadId) => {
+  const logActivity = async (leadId) => {
     const data = activityData[leadId];
     if (!data || !data.notes.trim()) return;
 
@@ -117,20 +189,41 @@ function PurchaseHistory() {
       timestamp: new Date().toISOString(),
     };
 
-    setLeadActivities(prev => ({
-      ...prev,
-      [leadId]: [...(prev[leadId] || []), newActivity]
-    }));
+    try {
+      // Save to database
+      await agentAPI.logLeadActivity(leadId, newActivity);
+      
+      // Update local state
+      setLeadActivities(prev => ({
+        ...prev,
+        [leadId]: [...(prev[leadId] || []), newActivity]
+      }));
 
-    // Reset form
-    setActivityData(prev => ({
-      ...prev,
-      [leadId]: { type: 'call', notes: '' }
-    }));
-    setShowActivityForm(prev => ({
-      ...prev,
-      [leadId]: false
-    }));
+      // Reset form
+      setActivityData(prev => ({
+        ...prev,
+        [leadId]: { type: 'call', notes: '' }
+      }));
+      setShowActivityForm(prev => ({
+        ...prev,
+        [leadId]: false
+      }));
+
+      // Remove AI recommendation for this lead (client-side filtering, no AI call)
+      const cachedRecs = localStorage.getItem('aiRecommendations');
+      if (cachedRecs) {
+        try {
+          const recommendations = JSON.parse(cachedRecs);
+          const filtered = recommendations.filter(rec => rec.transaction?.leadId !== leadId);
+          localStorage.setItem('aiRecommendations', JSON.stringify(filtered));
+        } catch (err) {
+          console.error('Error filtering recommendations:', err);
+        }
+      }
+    } catch (err) {
+      console.error('Error logging activity:', err);
+      setError('Failed to log activity');
+    }
   };
 
   const getActivityIcon = (type) => {
@@ -216,8 +309,8 @@ function PurchaseHistory() {
           </div>
           
           <div className="purchases-list">
-            {bulkPackages.map(({ transaction, lead }) => (
-              <div key={transaction.transactionId} className="purchase-card card bulk-package-card">
+            {bulkPackages.map(({ transaction, lead }, index) => (
+              <div key={`${transaction.transactionId}-${index}`} className="purchase-card card bulk-package-card">
                 <div className="purchase-header">
                   <div>
                     <h3>
@@ -335,7 +428,7 @@ function PurchaseHistory() {
 
                 <div className="leads-list">
                   {getLeadsByStage(selectedStage).map(({ transaction, lead }) => (
-                    <div key={transaction.transactionId} className="lead-detail-card">
+                    <div key={lead?.leadId || transaction.transactionId} className="lead-detail-card">
                       {/* Lead Header */}
                       <div className="lead-detail-header">
                         <div className="lead-main-info">
@@ -353,7 +446,7 @@ function PurchaseHistory() {
                         <select
                           className="stage-selector-compact"
                           value={lead?.funnelStage || 'new_match'}
-                          onChange={(e) => updateLeadStage(transaction.leadId, e.target.value)}
+                          onChange={(e) => updateLeadStage(lead?.leadId, e.target.value)}
                           onClick={(e) => e.stopPropagation()}
                         >
                           {FUNNEL_STAGES.map(stage => (
@@ -499,8 +592,8 @@ function PurchaseHistory() {
                           <div className="responses-grid">
                             {Object.entries(lead.responses).map(([question, answer]) => (
                               <div key={question} className="response-item">
-                                <div className="response-question">{question}</div>
-                                <div className="response-answer">{String(answer)}</div>
+                                <div className="response-question">{formatQuestionLabel(question)}</div>
+                                <div className="response-answer">{formatAnswerValue(answer)}</div>
                               </div>
                             ))}
                           </div>

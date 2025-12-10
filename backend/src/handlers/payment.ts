@@ -361,12 +361,13 @@ async function purchaseBulkPackage(agentId: string, body: any) {
         return DynamoDBService.updateItem(
           config.LEADS_TABLE_NAME,
           { leadId: lead.leadId, timestamp: lead.timestamp },
-          'SET #status = :claimed, claimedBy = :agentId, claimedAt = :now, transactionId = :txnId',
+          'SET #status = :claimed, claimedBy = :agentId, claimedAt = :now, transactionId = :txnId, funnelStage = :funnelStage',
           {
             ':claimed': 'claimed',
             ':agentId': agentId,
             ':now': timestamp,
             ':txnId': transactionId,
+            ':funnelStage': 'new_match',
           },
           {
             '#status': 'status',

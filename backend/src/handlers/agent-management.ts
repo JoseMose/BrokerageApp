@@ -17,6 +17,24 @@ export const handler = async (event: APIGatewayEvent) => {
     const httpMethod = event.httpMethod;
     const path = event.path;
 
+    // POST /agents/leads/{leadId}/activity - Log activity for a lead
+    if (httpMethod === 'POST' && path.includes('/agents/leads/') && path.includes('/activity')) {
+      const leadId = event.pathParameters?.leadId;
+      if (!leadId) {
+        return ResponseBuilder.error('Lead ID required', 400);
+      }
+      return await logLeadActivity(agentId, leadId, event);
+    }
+
+    // PUT /agents/leads/{leadId} - Update lead funnel stage
+    if (httpMethod === 'PUT' && path.includes('/agents/leads/')) {
+      const leadId = event.pathParameters?.leadId;
+      if (!leadId) {
+        return ResponseBuilder.error('Lead ID required', 400);
+      }
+      return await updateLeadFunnelStage(agentId, leadId, event);
+    }
+
     // GET /agents/assigned-leads - Get assigned leads
     if (httpMethod === 'GET' && path.includes('/assigned-leads')) {
       return await getAssignedLeads(agentId);
@@ -77,33 +95,50 @@ async function getAgentProfile(agentId: string) {
       'AgentTransactionsIndex'
     );
 
-    const purchasedLeads = transactions.filter(
+    const completedTransactions = transactions.filter(
       (tx: any) => tx.status === 'completed'
     );
 
-    // Get full lead details for purchased leads
-    const leadsWithDetails = await Promise.all(
-      purchasedLeads.slice(0, 20).map(async (tx: any) => {
+    // Handle both old format (leadIds array) and new format (single leadId)
+    const leadsWithDetails: any[] = [];
+    
+    for (const tx of completedTransactions) {
+      if (tx.leadIds && Array.isArray(tx.leadIds)) {
+        // Old bulk format - query all leads in the array
+        for (const leadId of tx.leadIds) {
+          const leads = await DynamoDBService.queryItems(
+            config.LEADS_TABLE_NAME,
+            'leadId = :leadId',
+            { ':leadId': leadId }
+          );
+          if (leads[0]) {
+            leadsWithDetails.push({
+              transaction: { ...tx, leadId }, // Add leadId to transaction for consistency
+              lead: leads[0],
+            });
+          }
+        }
+      } else if (tx.leadId) {
+        // New format - single leadId
         const leads = await DynamoDBService.queryItems(
           config.LEADS_TABLE_NAME,
           'leadId = :leadId',
-          {
-            ':leadId': tx.leadId,
-          }
+          { ':leadId': tx.leadId }
         );
-
-        return {
-          transaction: tx,
-          lead: leads[0] || null,
-        };
-      })
-    );
+        if (leads[0]) {
+          leadsWithDetails.push({
+            transaction: tx,
+            lead: leads[0],
+          });
+        }
+      }
+    }
 
     return ResponseBuilder.success({
       profile: agent,
       purchasedLeads: leadsWithDetails,
       stats: {
-        totalPurchased: purchasedLeads.length,
+        totalPurchased: leadsWithDetails.length,
         totalSpent: agent.performanceMetrics?.totalSpent || 0,
         conversionRate: agent.performanceMetrics?.conversionRate || 0,
       },
@@ -557,4 +592,153 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 
 function toRad(degrees: number): number {
   return (degrees * Math.PI) / 180;
+}
+
+/**
+ * Update lead funnel stage
+ */
+async function updateLeadFunnelStage(agentId: string, leadId: string, event: APIGatewayEvent) {
+  try {
+    const body = RequestValidator.parseBody<{ funnelStage: string }>(event);
+    
+    if (!body.funnelStage) {
+      return ResponseBuilder.error('funnelStage is required', 400);
+    }
+
+    // Valid funnel stages
+    const validStages = [
+      'new_match',
+      'first_outreach',
+      'connected',
+      'qualified',
+      'appointment_set',
+      'active_client',
+      'under_contract',
+      'closed'
+    ];
+
+    if (!validStages.includes(body.funnelStage)) {
+      return ResponseBuilder.error('Invalid funnel stage', 400);
+    }
+
+    // Get the lead
+    const leads = await DynamoDBService.queryItems(
+      config.LEADS_TABLE_NAME,
+      'leadId = :leadId',
+      { ':leadId': leadId }
+    );
+
+    if (leads.length === 0) {
+      return ResponseBuilder.notFound('Lead not found');
+    }
+
+    const lead = leads[0];
+
+    // Verify the lead belongs to this agent
+    if (lead.claimedBy !== agentId && lead.assignedTo !== agentId) {
+      return ResponseBuilder.forbidden('You do not have permission to update this lead');
+    }
+
+    // Update the lead's funnel stage
+    const timestamp = new Date().toISOString();
+    await DynamoDBService.updateItem(
+      config.LEADS_TABLE_NAME,
+      { leadId: lead.leadId, timestamp: lead.timestamp },
+      'SET funnelStage = :stage, updatedAt = :now',
+      {
+        ':stage': body.funnelStage,
+        ':now': timestamp
+      }
+    );
+
+    console.log(`Lead ${leadId} funnel stage updated to ${body.funnelStage} by agent ${agentId}`);
+
+    return ResponseBuilder.success({
+      message: 'Lead funnel stage updated successfully',
+      leadId,
+      funnelStage: body.funnelStage
+    });
+  } catch (error) {
+    console.error('Update lead funnel stage error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Log activity for a lead
+ */
+async function logLeadActivity(agentId: string, leadId: string, event: APIGatewayEvent) {
+  try {
+    const body = RequestValidator.parseBody<{
+      id: number;
+      type: string;
+      notes: string;
+      timestamp: string;
+    }>(event);
+
+    if (!body.type || !body.notes || !body.timestamp) {
+      return ResponseBuilder.error('Activity type, notes, and timestamp are required', 400);
+    }
+
+    // Valid activity types
+    const validTypes = ['call', 'text', 'email', 'appointment'];
+    if (!validTypes.includes(body.type)) {
+      return ResponseBuilder.error('Invalid activity type', 400);
+    }
+
+    // Get the lead
+    const leads = await DynamoDBService.queryItems(
+      config.LEADS_TABLE_NAME,
+      'leadId = :leadId',
+      { ':leadId': leadId }
+    );
+
+    if (leads.length === 0) {
+      return ResponseBuilder.notFound('Lead not found');
+    }
+
+    const lead = leads[0];
+
+    // Verify the lead belongs to this agent
+    if (lead.claimedBy !== agentId && lead.assignedTo !== agentId) {
+      return ResponseBuilder.forbidden('You do not have permission to update this lead');
+    }
+
+    // Get existing activities or initialize empty array
+    const existingActivities = lead.activities || [];
+    
+    // Add new activity
+    const newActivity = {
+      id: body.id || Date.now(),
+      type: body.type,
+      notes: body.notes,
+      timestamp: body.timestamp,
+      loggedBy: agentId
+    };
+    
+    const updatedActivities = [...existingActivities, newActivity];
+
+    // Update the lead with new activity
+    const timestamp = new Date().toISOString();
+    await DynamoDBService.updateItem(
+      config.LEADS_TABLE_NAME,
+      { leadId: lead.leadId, timestamp: lead.timestamp },
+      'SET activities = :activities, lastActivityAt = :now, updatedAt = :now',
+      {
+        ':activities': updatedActivities,
+        ':now': timestamp
+      }
+    );
+
+    console.log(`Activity logged for lead ${leadId} by agent ${agentId}: ${body.type}`);
+
+    return ResponseBuilder.success({
+      message: 'Activity logged successfully',
+      leadId,
+      activity: newActivity
+    });
+  } catch (error) {
+    console.error('Log lead activity error:', error);
+    throw error;
+  }
 }

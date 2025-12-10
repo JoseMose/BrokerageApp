@@ -114,18 +114,33 @@ function Dashboard() {
     if (!lastAIRun) return true; // Never run before
     
     const now = new Date();
+    const lastRunDate = new Date(lastAIRun);
+    
+    // Check if last AI run was today
+    const isSameDay = 
+      lastRunDate.getFullYear() === now.getFullYear() &&
+      lastRunDate.getMonth() === now.getMonth() &&
+      lastRunDate.getDate() === now.getDate();
+    
+    // If AI already ran today, don't run again
+    if (isSameDay) {
+      console.log('✅ AI already ran today. Next run: Tomorrow at 8:00 AM');
+      return false;
+    }
+    
+    // AI hasn't run today yet - check if we're past 8 AM
     const today8AM = new Date(now);
     today8AM.setHours(8, 0, 0, 0);
     
-    // If current time is before 8 AM today, check if AI ran yesterday at 8 AM or later
-    if (now < today8AM) {
-      const yesterday8AM = new Date(today8AM);
-      yesterday8AM.setDate(yesterday8AM.getDate() - 1);
-      return lastAIRun < yesterday8AM;
+    // Only run if it's past 8 AM today
+    if (now >= today8AM) {
+      console.log('🤖 Time for daily AI run (past 8 AM and not run today)');
+      return true;
     }
     
-    // If current time is after 8 AM today, check if AI has run today at 8 AM or later
-    return lastAIRun < today8AM;
+    // Before 8 AM today, don't run
+    console.log('⏰ Before 8 AM - waiting for scheduled time');
+    return false;
   };
 
   // REMOVED: No manual refresh button - AI ONLY runs at 8 AM daily
@@ -253,10 +268,9 @@ function Dashboard() {
     const tasks = [];
     const now = new Date();
     
-    // Count leads without any contact
-    const noContact = purchases.filter(({ transaction, lead }) => {
-      const activities = leadActivities[transaction.leadId] || [];
-      return activities.length === 0 && lead?.funnelStage !== 'closed';
+    // Count leads in "new_match" stage (haven't been contacted yet)
+    const noContact = purchases.filter(({ lead }) => {
+      return lead?.funnelStage === 'new_match';
     }).length;
     
     if (noContact > 0) {
@@ -348,6 +362,11 @@ function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* Assigned Leads Section (Round Robin) */}
+      <div className="card">
+        <AssignedLeads />
+      </div>
 
       <div className="stats-grid">
         <div className="stat-card stat-card-primary">
@@ -585,11 +604,6 @@ function Dashboard() {
             Log New Activity
           </a>
         </div>
-      </div>
-
-      {/* Assigned Leads Section */}
-      <div className="card">
-        <AssignedLeads />
       </div>
 
       <div className="card">

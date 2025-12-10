@@ -554,6 +554,30 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       }
     );
 
+    // Agent update lead funnel stage endpoint (under /agents/leads/{leadId})
+    const agentLeadsResource = agentsResource.addResource('leads');
+    const agentLeadByIdResource = agentLeadsResource.addResource('{leadId}');
+    
+    agentLeadByIdResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(agentManagementFunction),
+      {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // Agent log lead activity endpoint (under /agents/leads/{leadId}/activity)
+    const activityResource = agentLeadByIdResource.addResource('activity');
+    activityResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(agentManagementFunction),
+      {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
     // AI Recommendations endpoint (daily 8 AM only)
     const aiRecommendationsResource = agentsResource.addResource('ai-recommendations');
     aiRecommendationsResource.addMethod(
@@ -625,6 +649,17 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
     const bulkPackagesResource = api.root.addResource('bulk-packages');
     bulkPackagesResource.addMethod(
       'GET',
+      new apigateway.LambdaIntegration(bulkPackagesFunction),
+      {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // POST /bulk-packages/custom - Purchase custom count from pool
+    const customBulkResource = bulkPackagesResource.addResource('custom');
+    customBulkResource.addMethod(
+      'POST',
       new apigateway.LambdaIntegration(bulkPackagesFunction),
       {
         authorizer,
