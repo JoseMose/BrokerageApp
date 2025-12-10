@@ -3,6 +3,7 @@ import {
   ConverseCommand,
 } from '@aws-sdk/client-bedrock-runtime';
 import { getConfig } from '../utils/types';
+import { DynamoDBService } from '../utils/dynamodb';
 
 const config = getConfig();
 const bedrockClient = new BedrockRuntimeClient({ region: config.AWS_REGION });
@@ -35,6 +36,45 @@ interface AIRecommendation {
   reason: string;
   action: string;
   confidence: number;
+}
+
+/**
+ * Check if AI has already run today for this agent
+ */
+async function hasAIRunToday(agentId: string): Promise<boolean> {
+  try {
+    const agent = await DynamoDBService.getItem(config.AGENTS_TABLE_NAME, { agentId });
+    if (!agent || !agent.lastAIRun) return false;
+
+    const lastRun = new Date(agent.lastAIRun);
+    const now = new Date();
+    
+    // Check if same day
+    return (
+      lastRun.getFullYear() === now.getFullYear() &&
+      lastRun.getMonth() === now.getMonth() &&
+      lastRun.getDate() === now.getDate()
+    );
+  } catch (error) {
+    console.error('Error checking AI run status:', error);
+    return false;
+  }
+}
+
+/**
+ * Update agent's last AI run timestamp
+ */
+async function updateAIRunTimestamp(agentId: string): Promise<void> {
+  try {
+    await DynamoDBService.updateItem(
+      config.AGENTS_TABLE_NAME,
+      { agentId },
+      'SET lastAIRun = :timestamp',
+      { ':timestamp': new Date().toISOString() }
+    );
+  } catch (error) {
+    console.error('Error updating AI run timestamp:', error);
+  }
 }
 
 /**
@@ -77,6 +117,26 @@ export const handler = async (event: any) => {
       };
     }
 
+    // ✅ CHECK: Has AI already run today for this agent?
+    const alreadyRan = await hasAIRunToday(agentId);
+    if (alreadyRan) {
+      console.log(`✅ AI already ran today for agent ${agentId}. Skipping Bedrock call.`);
+      return {
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token',
+        },
+        body: JSON.stringify({
+          message: 'AI already ran today',
+          alreadyRan: true,
+          recommendations: [],
+        }),
+      };
+    }
+
     console.log(`Analyzing ${leads.length} leads for agent ${agentId}`);
 
     // Build the AI prompt with all lead data
@@ -84,6 +144,9 @@ export const handler = async (event: any) => {
 
     // Call AWS Bedrock for AI analysis
     const recommendations = await callBedrockForRecommendations(prompt);
+
+    // ✅ UPDATE: Mark that AI has run today for this agent
+    await updateAIRunTimestamp(agentId);
 
     console.log(`✅ Generated ${recommendations.length} recommendations`);
 
