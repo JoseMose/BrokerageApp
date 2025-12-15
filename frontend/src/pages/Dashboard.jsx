@@ -444,8 +444,8 @@ function Dashboard() {
             <p className="card-subtitle">Based on your lead activity and engagement patterns</p>
             
             <div className="recommendations-list">
-              {recommendations.map(({ lead, transaction, priority, reason, action, daysSinceContact, activitiesCount }) => (
-                <div key={transaction.transactionId} className={`recommendation-item priority-${priority}`}>
+              {recommendations.map(({ lead, transaction, priority, reason, action, daysSinceContact, activitiesCount }, index) => (
+                <div key={`rec-${transaction.transactionId}-${transaction.leadId}-${index}`} className={`recommendation-item priority-${priority}`}>
                   <div className="recommendation-priority">
                     {priority === 'high' ? '🔴' : '🟡'}
                   </div>

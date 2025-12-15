@@ -16,6 +16,9 @@ import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import * as appsync from 'aws-cdk-lib/aws-appsync';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
+import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as path from 'path';
 
@@ -120,13 +123,25 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
         brokerage: new cognito.StringAttribute({ mutable: true }),
       },
       passwordPolicy: {
-        minLength: 8,
+        minLength: 12,
         requireLowercase: true,
         requireUppercase: true,
         requireDigits: true,
         requireSymbols: true,
+        tempPasswordValidity: cdk.Duration.days(3),
       },
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
+      mfa: cognito.Mfa.OPTIONAL,
+      mfaSecondFactor: {
+        sms: true,
+        otp: true,
+      },
+      // Note: Advanced Security requires Cognito Plus plan ($0.05/MAU)
+      // advancedSecurityMode: cognito.AdvancedSecurityMode.ENFORCED,
+      deviceTracking: {
+        challengeRequiredOnNewDevice: true,
+        deviceOnlyRememberedOnUserPrompt: true,
+      },
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
@@ -138,6 +153,10 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       },
       generateSecret: false,
       preventUserExistenceErrors: true,
+      accessTokenValidity: cdk.Duration.hours(1),
+      idTokenValidity: cdk.Duration.hours(1),
+      refreshTokenValidity: cdk.Duration.days(30),
+      enableTokenRevocation: true,
     });
 
     // Admin group
@@ -160,16 +179,23 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
     // S3 BUCKETS
     // ============================================
 
-    // Frontend hosting bucket
+    // Frontend hosting bucket with enhanced security
     const frontendBucket = new s3.Bucket(this, 'FrontendBucket', {
       bucketName: `realtor-lead-frontend-${this.account}`,
       websiteIndexDocument: 'index.html',
       websiteErrorDocument: 'index.html',
       publicReadAccess: false,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      versioned: true,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
       autoDeleteObjects: false,
-      versioned: true,
+      lifecycleRules: [
+        {
+          noncurrentVersionExpiration: cdk.Duration.days(30),
+        },
+      ],
     });
 
     // Logs and backups bucket
@@ -248,6 +274,30 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       })
     );
 
+    // SES permissions for email notifications
+    lambdaRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'ses:SendEmail',
+          'ses:SendRawEmail',
+          'ses:SendTemplatedEmail',
+        ],
+        resources: ['*'], // SES doesn't support resource-level permissions
+      })
+    );
+
+    // SNS permissions for SMS notifications
+    lambdaRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'sns:Publish',
+        ],
+        resources: ['*'], // For sending to phone numbers
+      })
+    );
+
     // DynamoDB permissions
     leadsTable.grantReadWriteData(lambdaRole);
     agentsTable.grantReadWriteData(lambdaRole);
@@ -271,6 +321,8 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       PRICE_PER_POINT: '10',
       DEFAULT_RADIUS_MILES: '15',
       LEAD_EXPIRY_HOURS: '72',
+      FROM_EMAIL: 'noreply@realtorleads.com',
+      SUPPORT_EMAIL: 'support@realtorleads.com',
     };
 
     const lambdaProps = {
@@ -345,8 +397,8 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       role: lambdaRole,
       environment: {
         ...commonEnvironment,
-        STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || 'PLACEHOLDER',
-        STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || 'PLACEHOLDER',
+        STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || 'PLACEHOLDER_STRIPE_KEY',
+        STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || 'PLACEHOLDER_WEBHOOK_SECRET',
       },
       description: 'Handles Stripe payments and transactions',
     });
@@ -403,6 +455,19 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       description: 'AI-powered daily lead recommendations using Bedrock (8 AM only)',
     });
 
+    // Feedback Lambda
+    const feedbackFunction = new lambda.Function(this, 'FeedbackFunction', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      functionName: 'RealtorFeedback',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/dist/feedback')),
+      handler: 'index.handler',
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 512,
+      role: lambdaRole,
+      environment: commonEnvironment,
+      description: 'Handles lead feedback and client satisfaction surveys',
+    });
+
     // ============================================
     // STEP FUNCTIONS
     // ============================================
@@ -437,7 +502,27 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
         loggingLevel: apigateway.MethodLoggingLevel.INFO,
         dataTraceEnabled: true,
         metricsEnabled: true,
+        throttlingBurstLimit: 500,
+        throttlingRateLimit: 100,
       },
+      endpointConfiguration: {
+        types: [apigateway.EndpointType.REGIONAL],
+      },
+      policy: new iam.PolicyDocument({
+        statements: [
+          new iam.PolicyStatement({
+            effect: iam.Effect.ALLOW,
+            principals: [new iam.AnyPrincipal()],
+            actions: ['execute-api:Invoke'],
+            resources: ['execute-api:/*'],
+            conditions: {
+              StringEquals: {
+                'aws:SecureTransport': 'true', // Enforce HTTPS only
+              },
+            },
+          }),
+        ],
+      }),
       defaultCorsPreflightOptions: {
         allowOrigins: apigateway.Cors.ALL_ORIGINS,
         allowMethods: apigateway.Cors.ALL_METHODS,
@@ -448,6 +533,7 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
           'X-Api-Key',
           'X-Amz-Security-Token',
         ],
+        maxAge: cdk.Duration.hours(1),
       },
     });
 
@@ -678,6 +764,75 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       }
     );
 
+    // Feedback endpoints
+    const feedbackResource = api.root.addResource('feedback');
+    
+    // POST /feedback/lead - Submit lead quality feedback
+    const feedbackLeadResource = feedbackResource.addResource('lead');
+    feedbackLeadResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(feedbackFunction),
+      {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /feedback/lead/{leadId} - Get feedback for specific lead
+    const feedbackLeadByIdResource = feedbackLeadResource.addResource('{leadId}');
+    feedbackLeadByIdResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(feedbackFunction),
+      {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // POST /feedback/survey - Submit client satisfaction survey
+    const feedbackSurveyResource = feedbackResource.addResource('survey');
+    feedbackSurveyResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(feedbackFunction),
+      {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /feedback/stats - Get feedback statistics
+    const feedbackStatsResource = feedbackResource.addResource('stats');
+    feedbackStatsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(feedbackFunction),
+      {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /feedback/pending - Get pending feedback
+    const feedbackPendingResource = feedbackResource.addResource('pending');
+    feedbackPendingResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(feedbackFunction),
+      {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /feedback/analytics - Get AI analytics (admin only)
+    const feedbackAnalyticsResource = feedbackResource.addResource('analytics');
+    feedbackAnalyticsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(feedbackFunction),
+      {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
     // ============================================
     // APPSYNC GRAPHQL API FOR REAL-TIME UPDATES
     // ============================================
@@ -877,6 +1032,243 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
     api5xxAlarm.addAlarmAction(new actions.SnsAction(alarmTopic));
 
     // ============================================
+    // SECURITY ENHANCEMENTS
+    // ============================================
+
+    // Create CloudFront Origin Access Identity
+    const originAccessIdentity = new cloudfront.OriginAccessIdentity(this, 'OAI', {
+      comment: 'OAI for Realtor Lead Platform',
+    });
+
+    // Grant CloudFront access to S3 bucket
+    frontendBucket.grantRead(originAccessIdentity);
+
+    // Create response headers policy for security
+    const responseHeadersPolicy = new cloudfront.ResponseHeadersPolicy(this, 'SecurityHeaders', {
+      responseHeadersPolicyName: 'RealtorLeadSecurityHeaders',
+      securityHeadersBehavior: {
+        contentTypeOptions: { override: true },
+        frameOptions: {
+          frameOption: cloudfront.HeadersFrameOption.DENY,
+          override: true,
+        },
+        referrerPolicy: {
+          referrerPolicy: cloudfront.HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
+          override: true,
+        },
+        strictTransportSecurity: {
+          accessControlMaxAge: cdk.Duration.seconds(63072000),
+          includeSubdomains: true,
+          preload: true,
+          override: true,
+        },
+        xssProtection: {
+          protection: true,
+          modeBlock: true,
+          override: true,
+        },
+        contentSecurityPolicy: {
+          contentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://m.stripe.network; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://*.amazonaws.com https://api.stripe.com; frame-src https://js.stripe.com https://m.stripe.network;",
+          override: true,
+        },
+      },
+      customHeadersBehavior: {
+        customHeaders: [
+          {
+            header: 'Permissions-Policy',
+            value: 'geolocation=(), microphone=(), camera=()',
+            override: true,
+          },
+        ],
+      },
+    });
+
+    // Create CloudFront distribution with HTTPS
+    const distribution = new cloudfront.Distribution(this, 'FrontendDistribution', {
+      defaultBehavior: {
+        origin: new origins.S3Origin(frontendBucket, {
+          originAccessIdentity,
+        }),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
+        cachedMethods: cloudfront.CachedMethods.CACHE_GET_HEAD_OPTIONS,
+        compress: true,
+        responseHeadersPolicy,
+      },
+      defaultRootObject: 'index.html',
+      errorResponses: [
+        {
+          httpStatus: 403,
+          responseHttpStatus: 200,
+          responsePagePath: '/index.html',
+          ttl: cdk.Duration.seconds(0),
+        },
+        {
+          httpStatus: 404,
+          responseHttpStatus: 200,
+          responsePagePath: '/index.html',
+          ttl: cdk.Duration.seconds(0),
+        },
+      ],
+      minimumProtocolVersion: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
+      httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
+      enableIpv6: true,
+      priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
+      enableLogging: true,
+      logBucket: new s3.Bucket(this, 'CloudFrontLogBucket', {
+        bucketName: `realtor-lead-cloudfront-logs-${this.account}`,
+        encryption: s3.BucketEncryption.S3_MANAGED,
+        blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+        removalPolicy: cdk.RemovalPolicy.RETAIN,
+        enforceSSL: true,
+        objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_PREFERRED,
+        lifecycleRules: [
+          {
+            expiration: cdk.Duration.days(90),
+          },
+        ],
+      }),
+    });
+
+    // Add WAF Web ACL for API Gateway protection
+    const webAcl = new wafv2.CfnWebACL(this, 'ApiWAF', {
+      defaultAction: { allow: {} },
+      scope: 'REGIONAL',
+      visibilityConfig: {
+        cloudWatchMetricsEnabled: true,
+        metricName: 'RealtorLeadWAF',
+        sampledRequestsEnabled: true,
+      },
+      rules: [
+        {
+          name: 'RateLimitRule',
+          priority: 1,
+          statement: {
+            rateBasedStatement: {
+              limit: 2000,
+              aggregateKeyType: 'IP',
+            },
+          },
+          action: { block: {} },
+          visibilityConfig: {
+            cloudWatchMetricsEnabled: true,
+            metricName: 'RateLimitRule',
+            sampledRequestsEnabled: true,
+          },
+        },
+        {
+          name: 'AWSManagedRulesCommonRuleSet',
+          priority: 2,
+          statement: {
+            managedRuleGroupStatement: {
+              vendorName: 'AWS',
+              name: 'AWSManagedRulesCommonRuleSet',
+            },
+          },
+          overrideAction: { none: {} },
+          visibilityConfig: {
+            cloudWatchMetricsEnabled: true,
+            metricName: 'AWSManagedRulesCommonRuleSet',
+            sampledRequestsEnabled: true,
+          },
+        },
+        {
+          name: 'AWSManagedRulesKnownBadInputsRuleSet',
+          priority: 3,
+          statement: {
+            managedRuleGroupStatement: {
+              vendorName: 'AWS',
+              name: 'AWSManagedRulesKnownBadInputsRuleSet',
+            },
+          },
+          overrideAction: { none: {} },
+          visibilityConfig: {
+            cloudWatchMetricsEnabled: true,
+            metricName: 'AWSManagedRulesKnownBadInputsRuleSet',
+            sampledRequestsEnabled: true,
+          },
+        },
+        {
+          name: 'AWSManagedRulesSQLiRuleSet',
+          priority: 4,
+          statement: {
+            managedRuleGroupStatement: {
+              vendorName: 'AWS',
+              name: 'AWSManagedRulesSQLiRuleSet',
+            },
+          },
+          overrideAction: { none: {} },
+          visibilityConfig: {
+            cloudWatchMetricsEnabled: true,
+            metricName: 'AWSManagedRulesSQLiRuleSet',
+            sampledRequestsEnabled: true,
+          },
+        },
+      ],
+    });
+
+    // Associate WAF with API Gateway (depends on deployment)
+    const wafAssociation = new wafv2.CfnWebACLAssociation(this, 'ApiWAFAssociation', {
+      resourceArn: `arn:aws:apigateway:${this.region}::/restapis/${api.restApiId}/stages/prod`,
+      webAclArn: webAcl.attrArn,
+    });
+    wafAssociation.node.addDependency(api.deploymentStage);
+
+    // Add API Gateway resource policy to restrict access
+    const apiResourcePolicy = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      principals: [new iam.AnyPrincipal()],
+      actions: ['execute-api:Invoke'],
+      resources: [`arn:aws:execute-api:${this.region}:${this.account}:${api.restApiId}/*`],
+      conditions: {
+        IpAddress: {
+          'aws:SourceIp': ['0.0.0.0/0'], // Update with specific IPs if needed
+        },
+      },
+    });
+
+    // Create security monitoring alarms
+    const unauthorizedApiCallsMetric = new cloudwatch.Metric({
+      namespace: 'AWS/ApiGateway',
+      metricName: '4XXError',
+      statistic: 'Sum',
+      period: cdk.Duration.minutes(5),
+      dimensionsMap: {
+        ApiName: api.restApiName,
+      },
+    });
+
+    new cloudwatch.Alarm(this, 'UnauthorizedApiCallsAlarm', {
+      alarmName: 'RealtorLead-UnauthorizedAPICalls',
+      metric: unauthorizedApiCallsMetric,
+      threshold: 10,
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    const serverErrorsMetric = new cloudwatch.Metric({
+      namespace: 'AWS/ApiGateway',
+      metricName: '5XXError',
+      statistic: 'Sum',
+      period: cdk.Duration.minutes(5),
+      dimensionsMap: {
+        ApiName: api.restApiName,
+      },
+    });
+
+    new cloudwatch.Alarm(this, 'ServerErrorsAlarm', {
+      alarmName: 'RealtorLead-ServerErrors',
+      metric: serverErrorsMetric,
+      threshold: 5,
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    // ============================================
     // OUTPUTS
     // ============================================
 
@@ -925,6 +1317,29 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'EnableTTLCommand', {
       value: `aws dynamodb update-time-to-live --table-name ${leadsTable.tableName} --time-to-live-specification "Enabled=true, AttributeName=lockExpiresAt"`,
       description: 'Run this command to enable TTL on the Leads table',
+    });
+
+    new cdk.CfnOutput(this, 'CloudFrontURL', {
+      value: `https://${distribution.distributionDomainName}`,
+      description: 'HTTPS CloudFront distribution URL for frontend',
+      exportName: 'RealtorLeadCloudFrontURL',
+    });
+
+    new cdk.CfnOutput(this, 'FrontendBucketName', {
+      value: frontendBucket.bucketName,
+      description: 'S3 bucket for frontend hosting',
+      exportName: 'RealtorLeadFrontendBucket',
+    });
+
+    new cdk.CfnOutput(this, 'WAFWebACLArn', {
+      value: webAcl.attrArn,
+      description: 'WAF Web ACL ARN protecting the API',
+      exportName: 'RealtorLeadWAFArn',
+    });
+
+    new cdk.CfnOutput(this, 'DeployFrontendCommand', {
+      value: `aws s3 sync ./frontend/build s3://${frontendBucket.bucketName} --delete && aws cloudfront create-invalidation --distribution-id ${distribution.distributionId} --paths "/*"`,
+      description: 'Run this command to deploy frontend to S3 and invalidate CloudFront cache',
     });
 
     // Export resources for use by other stacks

@@ -26,7 +26,7 @@ exports.handler = async (event) => {
   }
   
   const now = new Date().toISOString();
-  const lockExpiration = Math.floor(Date.now() / 1000) + 15; // 15 seconds from now (Unix timestamp)
+  const lockExpiration = Math.floor(Date.now() / 1000) + 60; // 60 seconds (1 minute) from now (Unix timestamp)
   
   try {
     // ATOMIC CONDITIONAL UPDATE

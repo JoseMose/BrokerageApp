@@ -2,11 +2,13 @@ const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, PutCommand, QueryCommand, UpdateCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
 const { BedrockRuntimeClient, ConverseCommand } = require('@aws-sdk/client-bedrock-runtime');
 const { LocationClient, SearchPlaceIndexForTextCommand } = require('@aws-sdk/client-location');
+const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
 const { v4: uuidv4 } = require('uuid');
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient());
 const bedrock = new BedrockRuntimeClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const location = new LocationClient({ region: process.env.AWS_REGION || 'us-east-1' });
+const ses = new SESClient({ region: process.env.AWS_REGION || 'us-east-1' });
 
 /**
  * PUBLIC endpoint - Create a new lead from the landing page form
@@ -166,6 +168,12 @@ exports.handler = async (event) => {
     }));
     
     console.log('Lead created successfully:', leadId);
+    
+    // Send confirmation email to client (async, don't block response)
+    sendLeadConfirmationEmail(body.contact.email, body.contact.name, body.leadType).catch(err => {
+      console.error('Failed to send confirmation email:', err);
+      // Don't fail lead creation if email fails
+    });
     
     // TODO: Publish to AppSync to notify agents in real-time
     // await publishNewLeadEvent(lead);
@@ -494,6 +502,77 @@ Be concise and highlight the key strength.`;
  */
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+/**
+ * Send confirmation email to client
+ */
+async function sendLeadConfirmationEmail(clientEmail, clientName, leadType) {
+  const FROM_EMAIL = process.env.FROM_EMAIL || 'noreply@realtorleads.com';
+  
+  const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f7f9fc;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f7f9fc; padding: 40px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+          <tr>
+            <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 32px;">🎉 Thank You!</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 40px;">
+              <p style="font-size: 18px; color: #0B1D38; margin: 0 0 20px 0;">Hi ${clientName},</p>
+              <p style="font-size: 16px; color: #4B5563; line-height: 1.6; margin: 0 0 20px 0;">
+                Thank you for submitting your information! We've received your <strong>${leadType}</strong> inquiry and our top-rated real estate agents are reviewing your details now.
+              </p>
+              <div style="background-color: #f0f7ff; border-left: 4px solid #667eea; padding: 20px; margin: 30px 0; border-radius: 4px;">
+                <h3 style="margin: 0 0 15px 0; color: #0B1D38; font-size: 18px;">What happens next:</h3>
+                <ol style="margin: 0; padding-left: 20px; color: #4B5563;">
+                  <li style="margin-bottom: 10px;">Our AI matches you with the best agents in your area</li>
+                  <li style="margin-bottom: 10px;">A qualified agent will reach out within 24 hours</li>
+                  <li>They'll help you achieve your real estate goals</li>
+                </ol>
+              </div>
+              <p style="font-size: 16px; color: #4B5563; margin: 30px 0 0 0;">
+                Best regards,<br><strong>Realtor Lead Generation Team</strong>
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #f7f9fc; padding: 30px; text-align: center; border-radius: 0 0 12px 12px;">
+              <p style="font-size: 14px; color: #6B7280; margin: 0;">© 2025 Realtor Lead Generation Platform</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+
+  const command = new SendEmailCommand({
+    Source: FROM_EMAIL,
+    Destination: { ToAddresses: [clientEmail] },
+    Message: {
+      Subject: { Data: '🎉 Thank you for your interest!', Charset: 'UTF-8' },
+      Body: {
+        Html: { Data: htmlBody, Charset: 'UTF-8' },
+        Text: { 
+          Data: `Hi ${clientName},\n\nThank you for submitting your information! We've received your ${leadType} inquiry and our top-rated real estate agents are reviewing your details now.\n\nWhat happens next:\n1. Our AI matches you with the best agents in your area\n2. A qualified agent will reach out within 24 hours\n3. They'll help you achieve your real estate goals\n\nBest regards,\nRealtor Lead Generation Team`,
+          Charset: 'UTF-8'
+        }
+      }
+    }
+  });
+
+  await ses.send(command);
+  console.log('Confirmation email sent to:', clientEmail);
 }
 
 /**

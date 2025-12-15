@@ -85,6 +85,12 @@ export interface Agent {
     conversionRate: number;
     totalSpent: number;
   };
+  roundRobin?: {
+    lastAssignedAt?: string;
+    assignedLeadCount: number;
+    maxCapacity: number;
+    isOnline: boolean;
+  };
   stripeCustomerId?: string;
   status: 'active' | 'suspended';
   createdAt: string;

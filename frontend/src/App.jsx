@@ -3,6 +3,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Authenticator } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
 import { getCurrentUser } from 'aws-amplify/auth';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements } from '@stripe/react-stripe-js';
 
 // Components
 import Navigation from './components/Navigation';
@@ -15,6 +17,9 @@ import AdminDashboard from './pages/AdminDashboard';
 import LandingPage from './pages/LandingPage';
 import RealtorAuth from './pages/RealtorAuth';
 import BulkLeads from './pages/BulkLeads';
+
+// Initialize Stripe
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
 
 // Protected Route wrapper
 function ProtectedRoute({ children }) {
@@ -79,12 +84,14 @@ function App() {
             <ProtectedRoute>
               <Authenticator>
                 {({ signOut, user }) => (
-                  <div className="app">
-                    <Navigation user={user} signOut={signOut} />
-                    <main className="main-content">
-                      <Marketplace />
-                    </main>
-                  </div>
+                  <Elements stripe={stripePromise}>
+                    <div className="app">
+                      <Navigation user={user} signOut={signOut} />
+                      <main className="main-content">
+                        <Marketplace />
+                      </main>
+                    </div>
+                  </Elements>
                 )}
               </Authenticator>
             </ProtectedRoute>
@@ -164,12 +171,7 @@ function App() {
             <ProtectedRoute>
               <Authenticator>
                 {({ signOut, user }) => (
-                  <div className="app">
-                    <Navigation user={user} signOut={signOut} />
-                    <main className="main-content">
-                      <AdminDashboard />
-                    </main>
-                  </div>
+                  <AdminDashboard />
                 )}
               </Authenticator>
             </ProtectedRoute>

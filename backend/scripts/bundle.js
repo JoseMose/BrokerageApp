@@ -20,7 +20,9 @@ const handlers = [
   // Bulk packages
   'bulk-packages',
   // AI Recommendations (daily 8 AM only)
-  'ai-recommendations'
+  'ai-recommendations',
+  // Feedback & ratings
+  'feedback'
 ];
 
 const distDir = path.join(__dirname, '..', 'dist');

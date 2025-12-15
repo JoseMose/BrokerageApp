@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { marketplaceAPI } from '../utils/api';
+import { marketplaceAPI, paymentAPI } from '../utils/api';
 import ScoreMeter from '../components/ScoreMeter';
+import StripeCheckout from '../components/StripeCheckout';
 import { 
   formatCurrency, 
   getLeadTypeLabel, 
@@ -19,6 +20,11 @@ function Marketplace() {
     minScore: '',
     maxPrice: '',
   });
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedLead, setSelectedLead] = useState(null);
+  const [lockExpiresAt, setLockExpiresAt] = useState(null);
+  const [purchaseSuccess, setPurchaseSuccess] = useState(false);
+  const [purchasedLeadData, setPurchasedLeadData] = useState(null);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -76,6 +82,42 @@ function Marketplace() {
       minScore: '',
       maxPrice: '',
     });
+  };
+
+  const handlePurchaseClick = async (lead) => {
+    try {
+      setError(null);
+      setSelectedLead(lead);
+      
+      // Lock expires 15 seconds from now
+      const expiresAt = Math.floor(Date.now() / 1000) + 15;
+      setLockExpiresAt(expiresAt);
+      setShowPaymentModal(true);
+      
+      // TODO: Call backend to lock the lead
+      // await marketplaceAPI.lockLead(lead.leadId);
+    } catch (err) {
+      console.error('Error locking lead:', err);
+      setError(err.response?.data?.error || 'Failed to lock lead');
+    }
+  };
+
+  const handlePurchaseSuccess = (data) => {
+    setPurchasedLeadData(data);
+    setShowPaymentModal(false);
+    setPurchaseSuccess(true);
+    
+    // Refresh leads list
+    fetchLeads();
+  };
+
+  const handlePurchaseCancel = () => {
+    setShowPaymentModal(false);
+    setSelectedLead(null);
+    setLockExpiresAt(null);
+    
+    // TODO: Call backend to unlock the lead
+    // await marketplaceAPI.unlockLead(selectedLead.leadId);
   };
 
   if (error && error.includes('not found')) {
@@ -212,13 +254,93 @@ function Marketplace() {
                   </div>
                 </div>
 
-                <Link to={`/leads/${lead.leadId}`} className="btn btn-primary btn-block">
-                  View Details & Purchase
-                </Link>
+                <button 
+                  onClick={() => handlePurchaseClick(lead)} 
+                  className="btn btn-primary btn-block"
+                >
+                  Purchase Lead
+                </button>
               </div>
             ))}
           </div>
         </>
+      )}
+
+      {/* Payment Modal */}
+      {showPaymentModal && selectedLead && (
+        <StripeCheckout
+          lead={selectedLead}
+          lockExpiresAt={lockExpiresAt}
+          onSuccess={handlePurchaseSuccess}
+          onCancel={handlePurchaseCancel}
+        />
+      )}
+
+      {/* Purchase Success Modal */}
+      {purchaseSuccess && purchasedLeadData && (
+        <div className="stripe-checkout-modal">
+          <div className="stripe-checkout-content">
+            <div className="checkout-header">
+              <h2>🎉 Purchase Successful!</h2>
+              <button 
+                onClick={() => setPurchaseSuccess(false)} 
+                className="close-button"
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ padding: '2rem', textAlign: 'center' }}>
+              <div style={{ 
+                fontSize: '4rem', 
+                marginBottom: '1rem',
+                animation: 'bounce 0.5s'
+              }}>
+                ✅
+              </div>
+              
+              <h3 style={{ marginBottom: '1rem' }}>Lead Contact Information</h3>
+              
+              <div style={{ 
+                background: '#f9fafb', 
+                padding: '1.5rem', 
+                borderRadius: '8px',
+                marginBottom: '1.5rem',
+                textAlign: 'left'
+              }}>
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <strong>Name:</strong> {purchasedLeadData.contactInfo?.name || 'N/A'}
+                </div>
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <strong>Email:</strong> {purchasedLeadData.contactInfo?.email || 'N/A'}
+                </div>
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <strong>Phone:</strong> {purchasedLeadData.contactInfo?.phone || 'N/A'}
+                </div>
+                <div>
+                  <strong>Lead Type:</strong> {getLeadTypeLabel(purchasedLeadData.leadType)}
+                </div>
+              </div>
+
+              <p style={{ color: '#666', marginBottom: '1.5rem' }}>
+                This lead has been added to your dashboard. Start reaching out right away!
+              </p>
+
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <Link to="/dashboard" className="btn btn-primary" style={{ flex: 1 }}>
+                  View in My Leads
+                </Link>
+                <button 
+                  onClick={() => setPurchaseSuccess(false)} 
+                  className="btn btn-outline"
+                  style={{ flex: 1 }}
+                >
+                  Continue Shopping
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

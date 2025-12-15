@@ -89,6 +89,8 @@ export const submitLead = async (formData) => {
 // Admin APIs
 export const adminAPI = {
   getDashboard: () => apiClient.get('/admin', { params: { action: 'dashboard' } }),
+  getAnalytics: () => apiClient.get('/admin', { params: { action: 'analytics' } }),
+  getAgentPerformance: () => apiClient.get('/admin', { params: { action: 'agent-performance' } }),
   getLeads: (params) => apiClient.get('/admin', { params: { action: 'leads', ...params } }),
   getAgents: (params) => apiClient.get('/admin', { params: { action: 'agents', ...params } }),
   getTransactions: (params) => apiClient.get('/admin', { params: { action: 'transactions', ...params } }),
@@ -103,6 +105,16 @@ export const bulkPackagesAPI = {
   getAvailablePackages: () => apiClient.get('/bulk-packages'),
   purchasePackage: (packageId) => apiClient.post(`/bulk-packages/${packageId}/purchase`),
   purchaseCustomBulk: (leadCount, pricePerLead) => apiClient.post('/bulk-packages/custom', { leadCount, pricePerLead }),
+};
+
+// Feedback APIs
+export const feedbackAPI = {
+  submitLeadFeedback: (data) => apiClient.post('/feedback/lead', data),
+  submitClientSurvey: (data) => apiClient.post('/feedback/survey', data),
+  getLeadFeedback: (leadId) => apiClient.get(`/feedback/lead/${leadId}`),
+  getFeedbackStats: () => apiClient.get('/feedback/stats'),
+  getPendingFeedback: () => apiClient.get('/feedback/pending'),
+  getAIAnalytics: () => apiClient.get('/feedback/analytics'), // Admin only
 };
 
 export default apiClient;

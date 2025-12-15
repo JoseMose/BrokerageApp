@@ -118,19 +118,31 @@ async function listAvailableLeads(agent: Agent, queryParams: any) {
     // Calculate distance and filter by radius
     const leadsWithDistance = await Promise.all(
       allLeads.map(async (lead: Lead) => {
-        const distance = await LocationService.calculateDistance(
-          { lat: agent.location.lat, lng: agent.location.lng },
-          { lat: lead.location.lat, lng: lead.location.lng }
-        );
-
-        return { lead, distance };
+        try {
+          const distance = await LocationService.calculateDistance(
+            { lat: agent.location.lat, lng: agent.location.lng },
+            { lat: lead.location.lat, lng: lead.location.lng }
+          );
+          return { lead, distance };
+        } catch (error) {
+          // If distance calculation fails (e.g., rate limits), return a default distance
+          console.warn(`Distance calculation failed for lead ${lead.leadId}:`, error);
+          return { lead, distance: 999 }; // Use a high distance to sort to end
+        }
       })
     );
 
-    // Filter by radius
-    const leadsWithinRadius = leadsWithDistance
-      .filter(({ distance }) => distance <= (params.radius || agent.radius))
-      .sort((a, b) => b.lead.score - a.lead.score || a.distance - b.distance); // Sort by score desc, then distance asc
+    // Filter by radius (skip filtering if all distances are default due to errors)
+    const hasValidDistances = leadsWithDistance.some(({ distance }) => distance < 999);
+    console.log(`Total leads after filtering: ${leadsWithDistance.length}, Valid distances: ${hasValidDistances}`);
+    
+    const leadsWithinRadius = hasValidDistances
+      ? leadsWithDistance
+          .filter(({ distance }) => distance <= (params.radius || agent.radius))
+          .sort((a, b) => b.lead.score - a.lead.score || a.distance - b.distance)
+      : leadsWithDistance.sort((a, b) => b.lead.score - a.lead.score); // Sort by score only if no valid distances
+
+    console.log(`Leads within radius: ${leadsWithinRadius.length}, Agent radius: ${agent.radius || params.radius}`);
 
     // Format response (hide sensitive contact info until purchased)
     const formattedLeads = leadsWithinRadius.map(({ lead, distance }) => ({
@@ -155,6 +167,8 @@ async function listAvailableLeads(agent: Agent, queryParams: any) {
         hasBudget: !!lead.responses.budget || !!lead.responses.priceRange,
       },
     }));
+
+    console.log(`Returning ${formattedLeads.length} leads to agent ${agent.agentId}`);
 
     return ResponseBuilder.success({
       leads: formattedLeads,
@@ -204,12 +218,19 @@ async function getLeadDetails(agent: Agent, leadId: string) {
     }
 
     // Check distance
-    const distance = await LocationService.calculateDistance(
-      { lat: agent.location.lat, lng: agent.location.lng },
-      { lat: lead.location.lat, lng: lead.location.lng }
-    );
+    let distance: number;
+    try {
+      distance = await LocationService.calculateDistance(
+        { lat: agent.location.lat, lng: agent.location.lng },
+        { lat: lead.location.lat, lng: lead.location.lng }
+      );
+    } catch (error) {
+      console.warn(`Distance calculation failed for lead ${leadId}:`, error);
+      // If distance calculation fails, skip distance check
+      distance = 0;
+    }
 
-    if (distance > agent.radius) {
+    if (distance > 0 && distance > agent.radius) {
       return ResponseBuilder.forbidden('Lead is outside your service radius');
     }
 

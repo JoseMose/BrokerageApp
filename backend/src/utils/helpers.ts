@@ -79,8 +79,17 @@ export class RequestValidator {
   }
 
   static isAdmin(event: APIGatewayEvent): boolean {
-    const groups = event.requestContext.authorizer.claims['cognito:groups'];
-    return groups ? groups.includes('Admins') : false;
+    const groups = event.requestContext?.authorizer?.claims?.['cognito:groups'];
+    if (!groups) return false;
+    
+    // Handle both string and array formats, accept both 'Admin' and 'Admins' for backwards compatibility
+    if (typeof groups === 'string') {
+      return groups === 'Admin' || groups === 'Admins' || groups.includes('Admin') || groups.includes('Admins');
+    }
+    if (Array.isArray(groups)) {
+      return groups.includes('Admin') || groups.includes('Admins');
+    }
+    return false;
   }
 
   static validateEmail(email: string): boolean {

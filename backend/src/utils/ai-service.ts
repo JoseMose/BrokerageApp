@@ -138,15 +138,19 @@ ${Object.entries(responses)
 
 Scoring Factors to Consider:
 1. Pre-approval Status (Critical): Is the buyer pre-approved? Pre-approved = higher score
-2. Budget Clarity: Do they have a clear budget and price range?
-3. Timeline: How soon are they looking to buy? (ASAP/1-3 months = high, 6+ months = low)
-4. Motivation: Why are they buying? (first-home, relocating, upgrading, etc.)
-5. Earnest Money: Do they have funds ready?
-6. Current Housing: Are they renting (easier) or need to sell first (complex)?
-7. Property Preferences: Are their requirements specific and realistic?
-8. Communication Quality: Are responses detailed and thoughtful?
-9. Behavioral Signals: Consider engagement patterns, hesitation, completion time
-10. Bot Detection: Reduce score significantly if bot-like behavior detected
+2. Commitment Level (NEW): If found the right home, how soon would they make an offer? (immediately/within-week = high, still-researching = medium-low)
+3. Search Activity (NEW): Have they been actively looking? (yes-actively = high, browsing-online = medium, not-yet = lower)
+4. Reality Check (NEW): Are they prepared for competitive offers? (yes-understand = higher, still-learning = lower - but not penalized heavily)
+5. Timeline: How soon are they looking to buy? (ASAP/1-3 months = high, 6+ months = low)
+6. Budget Clarity: Do they have a clear budget and price range?
+7. Motivation: Why are they buying? (first-home, relocating, upgrading, etc.)
+8. Earnest Money: Do they have funds ready?
+9. Current Housing: Are they renting (easier) or need to sell first (complex)?
+10. Important Factors (NEW - Context Only): Review their open-ended response for genuine intent signals (don't over-weight this, use for context)
+11. Agent Commitment (NEW): Did they confirm openness to speaking with an agent? (Should always be true, reduce score if false)
+12. Communication Quality: Are responses detailed and thoughtful?
+13. Behavioral Signals: Consider engagement patterns, hesitation, completion time
+14. Bot Detection: Reduce score significantly if bot-like behavior detected
 
 Provide your JSON response now:`;
   }
@@ -196,15 +200,19 @@ ${Object.entries(responses)
 
 Scoring Factors to Consider:
 1. Timeline to Sell (Critical): How soon do they need to sell? (ASAP/1-3 months = high, 6+ months = low)
-2. Motivation: Why selling? (relocating, financial, inherited = varied urgency)
-3. Property Condition: Move-in ready/minor repairs (high) vs major repairs needed (lower)
-4. Estimated Value: Realistic property value expectations
-5. Occupancy Status: Owner-occupied, tenant, or vacant
-6. Pricing Expectations: Are they realistic about market value?
-7. Already Working with Agent?: Fresh lead vs already engaged
-8. Property Type: Straightforward sale vs complex situation
-9. Communication Quality: Detailed responses indicate serious intent
-10. Behavioral Signals: Consider engagement patterns and bot detection
+2. Commitment Level (NEW): If agreed on price/timing, would they be ready to list? (yes = high, possibly = medium, not-yet = lower)
+3. Reality Check (NEW): Are they open to pricing based on current market data? (yes = high, depends/not-sure = medium-low - shows flexibility vs rigidity)
+4. Motivation: Why selling? (relocating, financial, inherited = varied urgency)
+5. Property Condition: Move-in ready/minor repairs (high) vs major repairs needed (lower)
+6. Estimated Value: Realistic property value expectations
+7. Occupancy Status: Owner-occupied, tenant, or vacant
+8. Pricing Expectations: Are they realistic about market value?
+9. Important Factors (NEW - Context Only): Review their open-ended response for genuine intent signals
+10. Agent Commitment (NEW): Did they confirm openness to speaking with an agent? (Should always be true)
+11. Already Working with Agent?: Fresh lead vs already engaged
+12. Property Type: Straightforward sale vs complex situation
+13. Communication Quality: Detailed responses indicate serious intent
+14. Behavioral Signals: Consider engagement patterns and bot detection
 
 Provide your JSON response now:`;
   }

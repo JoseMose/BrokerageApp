@@ -98,9 +98,22 @@ export const handler = async (event: any) => {
   try {
     console.log('🤖 AI RECOMMENDATIONS - Starting analysis');
     
+    // Extract agentId from Cognito auth claims
+    const agentId = event.requestContext?.authorizer?.claims?.sub;
+    if (!agentId) {
+      return {
+        statusCode: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+        body: JSON.stringify({ error: 'Unauthorized: No agent ID found' }),
+      };
+    }
+    
     // Parse request body
     const body = JSON.parse(event.body || '{}');
-    const { leads, agentId } = body;
+    const { leads } = body;
 
     if (!leads || !Array.isArray(leads)) {
       return {

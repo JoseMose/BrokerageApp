@@ -11,7 +11,11 @@ import { getConfig } from './types';
 
 const config = getConfig();
 const client = new DynamoDBClient({ region: config.AWS_REGION });
-const docClient = DynamoDBDocumentClient.from(client);
+const docClient = DynamoDBDocumentClient.from(client, {
+  marshallOptions: {
+    removeUndefinedValues: true,
+  },
+});
 
 export class DynamoDBService {
   static async putItem(tableName: string, item: any): Promise<void> {

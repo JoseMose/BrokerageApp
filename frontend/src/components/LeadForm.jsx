@@ -67,22 +67,27 @@ const LeadForm = () => {
     leadType: '',           // Step 1
     motivation: '',         // Step 2
     timeline: '',           // Step 3
-    location: '',           // Step 4
-    preApproved: null,      // Step 5 (buyer)
-    priceRange: '',         // Step 5 (buyer)
-    rentingOrSelling: '',   // Step 5 (buyer)
-    earnestMoney: null,     // Step 5 (buyer)
-    estimatedValue: '',     // Step 5 (seller)
-    occupiedStatus: '',     // Step 5 (seller)
-    majorRepairs: null,     // Step 5 (seller)
-    hasRealtor: null,       // Step 6
-    name: '',               // Step 7
-    phone: '',              // Step 7
-    email: '',              // Step 7
+    commitmentLevel: '',    // Step 4 - NEW: Commitment question after timeline
+    location: '',           // Step 5
+    preApproved: null,      // Step 6 (buyer)
+    priceRange: '',         // Step 6 (buyer)
+    rentingOrSelling: '',   // Step 6 (buyer)
+    earnestMoney: null,     // Step 6 (buyer)
+    estimatedValue: '',     // Step 6 (seller)
+    occupiedStatus: '',     // Step 6 (seller)
+    majorRepairs: null,     // Step 6 (seller)
+    searchActivity: '',     // Step 7 - NEW: Search activity question
+    realityCheck: '',       // Step 8 - NEW: Reality check question
+    hasRealtor: null,       // Step 9
+    importantFactors: '',   // Step 10 - NEW: Open-ended question
+    name: '',               // Step 11
+    phone: '',              // Step 11
+    email: '',              // Step 11
+    agentCommitment: false, // Step 12 - NEW: Final commitment checkbox
     submissionResponse: null, // Store API response with score
   });
 
-  const totalSteps = 8;
+  const totalSteps = 12;
 
   // Track step timing
   useEffect(() => {
@@ -139,7 +144,10 @@ const LeadForm = () => {
     if (step === 3 && !formData.timeline) {
       newErrors.timeline = 'Please select an option';
     }
-    if (step === 4) {
+    if (step === 4 && !formData.commitmentLevel) {
+      newErrors.commitmentLevel = 'Please select an option';
+    }
+    if (step === 5) {
       if (!formData.location.trim()) {
         newErrors.location = 'Please enter a city or ZIP code';
       } else {
@@ -153,7 +161,7 @@ const LeadForm = () => {
         }
       }
     }
-    if (step === 5) {
+    if (step === 6) {
       if (formData.leadType === 'buyer') {
         if (!formData.preApproved) {
           newErrors.preApproved = 'Please select your pre-approval status';
@@ -179,7 +187,13 @@ const LeadForm = () => {
         }
       }
     }
-    if (step === 7) {
+    if (step === 7 && !formData.searchActivity) {
+      newErrors.searchActivity = 'Please select an option';
+    }
+    if (step === 8 && !formData.realityCheck) {
+      newErrors.realityCheck = 'Please select an option';
+    }
+    if (step === 11) {
       if (!formData.name.trim()) {
         newErrors.name = 'Name is required';
       }
@@ -218,7 +232,7 @@ const LeadForm = () => {
       // Reset typing timer
       typingStartTime.current = null;
 
-      if (currentStep === 6) {
+      if (currentStep === 9) {
         if (formData.hasRealtor === true) {
           setShowComplianceModal(true);
           return;
@@ -265,10 +279,11 @@ const LeadForm = () => {
     if (!formData.name?.trim()) submitErrors.name = 'Name is required';
     if (!formData.email?.trim()) submitErrors.email = 'Email is required';
     if (!formData.phone?.trim()) submitErrors.phone = 'Phone is required';
+    if (!formData.agentCommitment) submitErrors.agentCommitment = 'Please confirm you are open to speaking with an agent';
     
     if (Object.keys(submitErrors).length > 0) {
       setErrors(submitErrors);
-      setCurrentStep(7); // Go back to contact info step
+      setCurrentStep(11); // Go back to contact info step
       return;
     }
 
@@ -289,6 +304,11 @@ const LeadForm = () => {
       const responses = {
         motivation: formData.motivation,
         timeline: formData.timeline,
+        commitmentLevel: formData.commitmentLevel, // NEW
+        searchActivity: formData.searchActivity, // NEW
+        realityCheck: formData.realityCheck, // NEW
+        importantFactors: formData.importantFactors, // NEW
+        agentCommitment: formData.agentCommitment, // NEW
       };
       
       // Add buyer/seller-specific responses
@@ -723,8 +743,90 @@ const LeadForm = () => {
                 </div>
               )}
 
-              {/* Step 4: Location - Buyer */}
+              {/* Step 4: Commitment Level - Buyer (NEW) */}
               {currentStep === 4 && formData.leadType === 'buyer' && (
+                <div className="space-y-6">
+                  <div className="text-center mb-8">
+                    <div className="inline-block mb-3 text-electric-600 text-sm font-semibold">Got it ✓</div>
+                    <h2 className="text-3xl font-bold text-navy mb-2">
+                      If you found the right home, how soon would you feel comfortable making an offer?
+                    </h2>
+                    <p className="text-slate">This helps us match you with the right availability</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {[
+                      { value: 'immediately', label: 'Immediately', icon: '🚀' },
+                      { value: 'within-week', label: 'Within a week', icon: '📆' },
+                      { value: 'still-researching', label: 'Still researching', icon: '🔍' },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => {
+                          setFormData({ ...formData, commitmentLevel: option.value });
+                          setErrors({});
+                          setCurrentStep(5);
+                        }}
+                        className={`w-full p-5 rounded-xl border-2 transition-all duration-200 flex items-center gap-4 ${
+                          formData.commitmentLevel === option.value
+                            ? 'border-electric bg-electric-50 shadow-lg'
+                            : 'border-pearl-300 hover:border-electric-300 hover:shadow-md bg-pearl-50'
+                        }`}
+                      >
+                        <span className="text-3xl">{option.icon}</span>
+                        <span className="text-lg font-semibold text-navy">{option.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {errors.commitmentLevel && (
+                    <p className="text-danger text-sm text-center mt-2">{errors.commitmentLevel}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Step 4: Commitment Level - Seller (NEW) */}
+              {currentStep === 4 && formData.leadType === 'seller' && (
+                <div className="space-y-6">
+                  <div className="text-center mb-8">
+                    <div className="inline-block mb-3 text-electric-600 text-sm font-semibold">That helps ✓</div>
+                    <h2 className="text-3xl font-bold text-navy mb-2">
+                      If we agreed on price and timing, would you be ready to list your home?
+                    </h2>
+                    <p className="text-slate">This helps us understand your readiness</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {[
+                      { value: 'yes', label: 'Yes', icon: '✅' },
+                      { value: 'possibly', label: 'Possibly', icon: '🤔' },
+                      { value: 'not-yet', label: 'Not yet', icon: '⏳' },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => {
+                          setFormData({ ...formData, commitmentLevel: option.value });
+                          setErrors({});
+                          setCurrentStep(5);
+                        }}
+                        className={`w-full p-5 rounded-xl border-2 transition-all duration-200 flex items-center gap-4 ${
+                          formData.commitmentLevel === option.value
+                            ? 'border-electric bg-electric-50 shadow-lg'
+                            : 'border-pearl-300 hover:border-electric-300 hover:shadow-md bg-pearl-50'
+                        }`}
+                      >
+                        <span className="text-3xl">{option.icon}</span>
+                        <span className="text-lg font-semibold text-navy">{option.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {errors.commitmentLevel && (
+                    <p className="text-danger text-sm text-center mt-2">{errors.commitmentLevel}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Step 5: Location - Buyer */}
+              {currentStep === 5 && formData.leadType === 'buyer' && (
                 <div className="space-y-6">
                   <div className="text-center mb-8">
                     <h2 className="text-3xl font-bold text-navy mb-2">
@@ -782,8 +884,8 @@ const LeadForm = () => {
                 </div>
               )}
 
-              {/* Step 4: Location - Seller */}
-              {currentStep === 4 && formData.leadType === 'seller' && (
+              {/* Step 5: Location - Seller */}
+              {currentStep === 5 && formData.leadType === 'seller' && (
                 <div className="space-y-6">
                   <div className="text-center mb-8">
                     <h2 className="text-3xl font-bold text-navy mb-2">
@@ -841,8 +943,8 @@ const LeadForm = () => {
                 </div>
               )}
 
-              {/* Step 5: Financial Details (Buyer) */}
-              {currentStep === 5 && formData.leadType === 'buyer' && (
+              {/* Step 6: Financial Details (Buyer) */}
+              {currentStep === 6 && formData.leadType === 'buyer' && (
                 <div className="space-y-6">
                   <div className="text-center mb-8">
                     <h2 className="text-3xl font-bold text-navy mb-2">
@@ -997,8 +1099,8 @@ const LeadForm = () => {
                 </div>
               )}
 
-              {/* Step 5: Financial Details (Seller) */}
-              {currentStep === 5 && formData.leadType === 'seller' && (
+              {/* Step 6: Financial Details (Seller) */}
+              {currentStep === 6 && formData.leadType === 'seller' && (
                 <div className="space-y-6">
                   <div className="text-center mb-8">
                     <h2 className="text-3xl font-bold text-navy mb-2">
@@ -1124,8 +1226,128 @@ const LeadForm = () => {
                 </div>
               )}
 
-              {/* Step 6: Realtor Check */}
-              {currentStep === 6 && (
+              {/* Step 7: Search Activity (NEW) */}
+              {currentStep === 7 && (
+                <div className="space-y-6">
+                  <div className="text-center mb-8">
+                    <div className="inline-block mb-3 text-electric-600 text-sm font-semibold">Almost done ✓</div>
+                    <h2 className="text-3xl font-bold text-navy mb-2">
+                      Have you already been looking at homes?
+                    </h2>
+                    <p className="text-slate">This helps us understand where you are in the process</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {[
+                      { value: 'yes-actively', label: 'Yes, actively (in person or serious online search)', icon: '🏠' },
+                      { value: 'browsing-online', label: 'Mostly browsing online', icon: '💻' },
+                      { value: 'not-yet', label: 'Not yet', icon: '🆕' },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => {
+                          setFormData({ ...formData, searchActivity: option.value });
+                          setErrors({});
+                          setCurrentStep(8);
+                        }}
+                        className={`w-full p-5 rounded-xl border-2 transition-all duration-200 flex items-center gap-4 ${
+                          formData.searchActivity === option.value
+                            ? 'border-electric bg-electric-50 shadow-lg'
+                            : 'border-pearl-300 hover:border-electric-300 hover:shadow-md bg-pearl-50'
+                        }`}
+                      >
+                        <span className="text-3xl">{option.icon}</span>
+                        <span className="text-lg font-semibold text-navy">{option.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {errors.searchActivity && (
+                    <p className="text-danger text-sm text-center mt-2">{errors.searchActivity}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Step 8: Reality Check - Buyer (NEW) */}
+              {currentStep === 8 && formData.leadType === 'buyer' && (
+                <div className="space-y-6">
+                  <div className="text-center mb-8">
+                    <h2 className="text-3xl font-bold text-navy mb-2">
+                      Homes in your area can sell quickly. Are you prepared for competitive offers?
+                    </h2>
+                    <p className="text-slate">Understanding market conditions is important</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {[
+                      { value: 'yes-understand', label: 'Yes, I understand the process', icon: '✅' },
+                      { value: 'still-learning', label: "I'm still learning", icon: '📚' },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => {
+                          setFormData({ ...formData, realityCheck: option.value });
+                          setErrors({});
+                          setCurrentStep(9);
+                        }}
+                        className={`w-full p-5 rounded-xl border-2 transition-all duration-200 flex items-center gap-4 ${
+                          formData.realityCheck === option.value
+                            ? 'border-electric bg-electric-50 shadow-lg'
+                            : 'border-pearl-300 hover:border-electric-300 hover:shadow-md bg-pearl-50'
+                        }`}
+                      >
+                        <span className="text-3xl">{option.icon}</span>
+                        <span className="text-lg font-semibold text-navy">{option.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {errors.realityCheck && (
+                    <p className="text-danger text-sm text-center mt-2">{errors.realityCheck}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Step 8: Reality Check - Seller (NEW) */}
+              {currentStep === 8 && formData.leadType === 'seller' && (
+                <div className="space-y-6">
+                  <div className="text-center mb-8">
+                    <h2 className="text-3xl font-bold text-navy mb-2">
+                      Are you open to pricing your home based on current market data?
+                    </h2>
+                    <p className="text-slate">Realistic pricing leads to better results</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {[
+                      { value: 'yes', label: 'Yes', icon: '✅' },
+                      { value: 'depends', label: 'It depends', icon: '🤔' },
+                      { value: 'not-sure', label: 'Not sure yet', icon: '❓' },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => {
+                          setFormData({ ...formData, realityCheck: option.value });
+                          setErrors({});
+                          setCurrentStep(9);
+                        }}
+                        className={`w-full p-5 rounded-xl border-2 transition-all duration-200 flex items-center gap-4 ${
+                          formData.realityCheck === option.value
+                            ? 'border-electric bg-electric-50 shadow-lg'
+                            : 'border-pearl-300 hover:border-electric-300 hover:shadow-md bg-pearl-50'
+                        }`}
+                      >
+                        <span className="text-3xl">{option.icon}</span>
+                        <span className="text-lg font-semibold text-navy">{option.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {errors.realityCheck && (
+                    <p className="text-danger text-sm text-center mt-2">{errors.realityCheck}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Step 9: Realtor Check */}
+              {currentStep === 9 && (
                 <div className="space-y-6">
                   <div className="text-center mb-8">
                     <h2 className="text-3xl font-bold text-navy mb-2">
@@ -1139,7 +1361,7 @@ const LeadForm = () => {
                       onClick={() => {
                         setFormData({ ...formData, hasRealtor: false });
                         setErrors({});
-                        setCurrentStep(7);
+                        setCurrentStep(10);
                       }}
                       className={`w-full p-5 rounded-xl border-2 transition-all duration-200 flex items-center gap-4 ${
                         formData.hasRealtor === false
@@ -1170,8 +1392,50 @@ const LeadForm = () => {
                 </div>
               )}
 
-              {/* Step 7: Contact Info */}
-              {currentStep === 7 && (
+              {/* Step 10: Open-Ended Question (NEW) */}
+              {currentStep === 10 && (
+                <div className="space-y-6">
+                  <div className="text-center mb-8">
+                    <div className="inline-block mb-3 text-electric-600 text-sm font-semibold">Great! One last thing ✓</div>
+                    <h2 className="text-3xl font-bold text-navy mb-2">
+                      What's most important to you in this move?
+                    </h2>
+                    <p className="text-slate">1-2 sentences is perfect. This helps agents understand your priorities.</p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <textarea
+                      placeholder="Example: timing, price, school district, flexibility…"
+                      value={formData.importantFactors}
+                      onChange={(e) => handleFieldChange('importantFactors', e.target.value)}
+                      onFocus={handleFocus}
+                      rows={4}
+                      className="w-full p-4 text-lg border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-electric transition-all border-pearl-300 resize-none"
+                    />
+                    <p className="text-xs text-slate-500 text-center">Optional, but helpful for better matches</p>
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      type="button"
+                      onClick={handleBack}
+                      className="flex-1 px-6 py-3 border-2 border-slate-300 text-slate-700 font-semibold rounded-xl hover:bg-pearl-50 transition-all"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentStep(11)}
+                      className="flex-1 px-6 py-3 bg-gradient-to-r from-electric to-electric-600 text-white font-semibold rounded-xl hover:from-electric-600 hover:to-electric-700 transition-all shadow-lg"
+                    >
+                      Continue
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 11: Contact Info */}
+              {currentStep === 11 && (
                 <div className="space-y-6">
                   <div className="text-center mb-8">
                     <h2 className="text-3xl font-bold text-navy mb-2">
@@ -1238,8 +1502,8 @@ const LeadForm = () => {
                 </div>
               )}
 
-              {/* Step 8: Submit */}
-              {currentStep === 8 && (
+              {/* Step 12: Submit with Commitment Checkbox (NEW) */}
+              {currentStep === 12 && (
                 <div className="space-y-6">
                   <div className="text-center mb-8">
                     <div className="text-6xl mb-4">🎯</div>
@@ -1346,6 +1610,27 @@ const LeadForm = () => {
                     </div>
                   </div>
 
+                  {/* Micro-Friction Commitment Moment (NEW) */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 mb-6">
+                    <p className="text-slate-700 text-base mb-4 text-center">
+                      Before we match you, we want to respect our agents' time.
+                    </p>
+                    <label className="flex items-start gap-3 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={formData.agentCommitment}
+                        onChange={(e) => setFormData({ ...formData, agentCommitment: e.target.checked })}
+                        className="mt-1 w-5 h-5 text-electric focus:ring-electric border-slate-300 rounded cursor-pointer"
+                      />
+                      <span className="text-slate-700 text-sm leading-relaxed group-hover:text-navy transition-colors">
+                        I'm actively looking and open to speaking with a realtor if the fit is right.
+                      </span>
+                    </label>
+                    {errors.agentCommitment && (
+                      <p className="text-danger text-sm mt-2">{errors.agentCommitment}</p>
+                    )}
+                  </div>
+
                   {errors.submit && (
                     <div className="bg-danger-50 border border-danger-200 rounded-xl p-4 mb-4">
                       <p className="text-danger-800 text-sm">{errors.submit}</p>
@@ -1354,7 +1639,12 @@ const LeadForm = () => {
 
                   <button
                     onClick={handleSubmit}
-                    className="w-full bg-gradient-to-r from-electric to-electric-600 hover:from-electric-600 hover:to-electric-700 text-white font-bold text-xl py-5 px-8 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-xl"
+                    disabled={!formData.agentCommitment}
+                    className={`w-full font-bold text-xl py-5 px-8 rounded-xl transition-all duration-200 shadow-xl ${
+                      formData.agentCommitment
+                        ? 'bg-gradient-to-r from-electric to-electric-600 hover:from-electric-600 hover:to-electric-700 text-white transform hover:scale-105'
+                        : 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                    }`}
                   >
                     🚀 Match Me With My Realtor
                   </button>
@@ -1362,7 +1652,7 @@ const LeadForm = () => {
               )}
 
               {/* Navigation Buttons */}
-              {currentStep < 7 && currentStep !== 1 && (
+              {currentStep < 11 && currentStep !== 1 && (
                 <div className="flex justify-between mt-8 pt-6 border-t border-pearl-300">
                   <button
                     onClick={handleBack}
@@ -1376,7 +1666,7 @@ const LeadForm = () => {
                 </div>
               )}
 
-              {currentStep === 7 && (
+              {currentStep === 11 && (
                 <div className="flex justify-between mt-8 pt-6 border-t border-pearl-300">
                   <button
                     onClick={handleBack}
@@ -1399,7 +1689,7 @@ const LeadForm = () => {
                 </div>
               )}
 
-              {currentStep === 8 && (
+              {currentStep === 12 && (
                 <div className="flex justify-center mt-6">
                   <button
                     onClick={handleBack}

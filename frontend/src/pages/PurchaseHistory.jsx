@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { agentAPI } from '../utils/api';
+import { agentAPI, feedbackAPI } from '../utils/api';
 import { formatCurrency, formatDateTime, getLeadTypeLabel } from '../utils/helpers';
+import LeadRatingModal from '../components/LeadRatingModal';
 import './PurchaseHistory.css';
 
 // Funnel stages
@@ -64,6 +65,8 @@ function PurchaseHistory() {
   const [showActivityForm, setShowActivityForm] = useState({}); // Track which lead's form is open
   const [activityData, setActivityData] = useState({}); // Store form data per lead
   const [leadActivities, setLeadActivities] = useState({}); // Store activities per lead
+  const [ratingModalLead, setRatingModalLead] = useState(null); // Lead being rated
+  const [leadFeedback, setLeadFeedback] = useState({}); // Track which leads have feedback
 
   // Load activities from localStorage on mount
   useEffect(() => {
@@ -244,6 +247,43 @@ function PurchaseHistory() {
       appointment: 'Appointment',
     };
     return labels[type] || 'Activity';
+  };
+
+  // Handle rating modal
+  const handleRateLeadClick = async (lead, transaction) => {
+    // Check if feedback already exists
+    try {
+      const response = await feedbackAPI.getLeadFeedback(transaction.leadId);
+      if (response.data.hasFeedback) {
+        alert('You have already submitted feedback for this lead');
+        return;
+      }
+    } catch (err) {
+      console.error('Error checking feedback:', err);
+    }
+
+    setRatingModalLead({ ...lead, leadId: transaction.leadId, transactionId: transaction.transactionId });
+  };
+
+  const handleRatingSubmit = async (formData) => {
+    try {
+      const response = await feedbackAPI.submitLeadFeedback({
+        ...formData,
+        leadId: ratingModalLead.leadId,
+      });
+
+      // Mark as rated
+      setLeadFeedback(prev => ({
+        ...prev,
+        [ratingModalLead.leadId]: true,
+      }));
+
+      alert('Thank you for your feedback! This helps us improve lead quality.');
+      setRatingModalLead(null);
+    } catch (err) {
+      console.error('Error submitting feedback:', err);
+      alert('Failed to submit feedback. Please try again.');
+    }
   };
 
   const getLeadsByStage = (stageId) => {
@@ -577,13 +617,30 @@ function PurchaseHistory() {
                         </div>
                       )}
 
-                      {/* Expand for More Details */}
-                      <button
-                        className="expand-details-btn"
-                        onClick={() => setExpandedLead(expandedLead === transaction.transactionId ? null : transaction.transactionId)}
-                      >
-                        {expandedLead === transaction.transactionId ? '▲ Hide Details' : '▼ Show All Details'}
-                      </button>
+                      {/* Action Buttons */}
+                      <div className="lead-action-buttons">
+                        <button
+                          className="expand-details-btn"
+                          onClick={() => setExpandedLead(expandedLead === transaction.transactionId ? null : transaction.transactionId)}
+                        >
+                          {expandedLead === transaction.transactionId ? '▲ Hide Details' : '▼ Show All Details'}
+                        </button>
+                        
+                        {!leadFeedback[transaction.leadId] && (
+                          <button
+                            className="rate-lead-btn"
+                            onClick={() => handleRateLeadClick(lead, transaction)}
+                          >
+                            ⭐ Rate Lead Quality
+                          </button>
+                        )}
+                        
+                        {leadFeedback[transaction.leadId] && (
+                          <div className="feedback-submitted-badge">
+                            ✅ Feedback Submitted
+                          </div>
+                        )}
+                      </div>
 
                       {/* Expanded Details */}
                       {expandedLead === transaction.transactionId && lead?.responses && (
@@ -626,6 +683,14 @@ function PurchaseHistory() {
           </div>
         </div>
       </div>
+
+      {/* Rating Modal */}
+      <LeadRatingModal
+        lead={ratingModalLead}
+        isOpen={!!ratingModalLead}
+        onClose={() => setRatingModalLead(null)}
+        onSubmit={handleRatingSubmit}
+      />
     </div>
   );
 }

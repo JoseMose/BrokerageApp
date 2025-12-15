@@ -2,6 +2,8 @@ import { DynamoDBService } from '../utils/dynamodb';
 import { LocationService } from '../utils/location';
 import { ResponseBuilder, RequestValidator } from '../utils/helpers';
 import { getConfig, APIGatewayEvent, AgentProfileUpdateRequest, Agent } from '../utils/types';
+import { EmailService } from '../utils/email-service';
+import { SMSService } from '../utils/sms-service';
 
 const config = getConfig();
 
@@ -62,6 +64,21 @@ export const handler = async (event: APIGatewayEvent) => {
     // PUT /agents - Update agent profile
     if (httpMethod === 'PUT') {
       return await updateAgentProfile(agentId, event);
+    }
+
+    // PUT /agents/status - Update online/offline status
+    if (httpMethod === 'PUT' && path.includes('/status')) {
+      return await updateAgentStatus(agentId, event);
+    }
+
+    // PUT /agents/capacity - Update max capacity
+    if (httpMethod === 'PUT' && path.includes('/capacity')) {
+      return await updateAgentCapacity(agentId, event);
+    }
+
+    // GET /agents/assignments - Get assignment history
+    if (httpMethod === 'GET' && path.includes('/assignments')) {
+      return await getAssignmentHistory(agentId);
     }
 
     return ResponseBuilder.error('Invalid request method', 405);
@@ -292,6 +309,12 @@ async function createAgentProfile(agentId: string, event: APIGatewayEvent) {
         conversionRate: 0,
         totalSpent: 0,
       },
+      roundRobin: {
+        lastAssignedAt: undefined,
+        assignedLeadCount: 0,
+        maxCapacity: 10, // Default max capacity
+        isOnline: true, // Online by default
+      },
       status: 'active',
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -300,6 +323,18 @@ async function createAgentProfile(agentId: string, event: APIGatewayEvent) {
     await DynamoDBService.putItem(config.AGENTS_TABLE_NAME, agent);
 
     console.log('Agent profile created:', agentId);
+
+    // Send welcome email (async, don't block response)
+    EmailService.sendWelcomeEmail(agent.email, agent.name, '').catch((err) => {
+      console.error('Failed to send welcome email:', err);
+    });
+
+    // Send welcome SMS
+    if (agent.phone) {
+      SMSService.sendWelcomeSMS(agent.phone, agent.name).catch((err) => {
+        console.error('Failed to send welcome SMS:', err);
+      });
+    }
 
     return ResponseBuilder.success(
       {
@@ -361,8 +396,8 @@ async function updateAgentProfile(agentId: string, event: APIGatewayEvent) {
     }
 
     if (body.radius !== undefined) {
-      if (body.radius < 5 || body.radius > 40) {
-        return ResponseBuilder.error('Radius must be between 5 and 40 miles');
+      if (body.radius < 5 || body.radius > 1000) {
+        return ResponseBuilder.error('Radius must be between 5 and 1000 miles');
       }
       updateParts.push('radius = :radius');
       expressionValues[':radius'] = body.radius;
@@ -739,6 +774,147 @@ async function logLeadActivity(agentId: string, leadId: string, event: APIGatewa
     });
   } catch (error) {
     console.error('Log lead activity error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update agent online/offline status
+ */
+async function updateAgentStatus(agentId: string, event: APIGatewayEvent) {
+  try {
+    const body = RequestValidator.parseBody<any>(event);
+
+    RequestValidator.validateRequired({
+      isOnline: body.isOnline,
+    });
+
+    if (typeof body.isOnline !== 'boolean') {
+      return ResponseBuilder.error('isOnline must be a boolean', 400);
+    }
+
+    // Update agent status
+    await DynamoDBService.updateItem(
+      config.AGENTS_TABLE_NAME,
+      { agentId, SK: 'profile' },
+      'SET roundRobin.isOnline = :isOnline, updatedAt = :now',
+      {
+        ':isOnline': body.isOnline,
+        ':now': new Date().toISOString(),
+      }
+    );
+
+    console.log(`Agent ${agentId} status updated to: ${body.isOnline ? 'online' : 'offline'}`);
+
+    return ResponseBuilder.success({
+      message: `Agent status updated to ${body.isOnline ? 'online' : 'offline'}`,
+      isOnline: body.isOnline,
+    });
+  } catch (error) {
+    console.error('Update agent status error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update agent max capacity
+ */
+async function updateAgentCapacity(agentId: string, event: APIGatewayEvent) {
+  try {
+    const body = RequestValidator.parseBody<any>(event);
+
+    RequestValidator.validateRequired({
+      maxCapacity: body.maxCapacity,
+    });
+
+    const capacity = parseInt(body.maxCapacity);
+    if (isNaN(capacity) || capacity < 1 || capacity > 100) {
+      return ResponseBuilder.error('maxCapacity must be between 1 and 100', 400);
+    }
+
+    // Update agent capacity
+    await DynamoDBService.updateItem(
+      config.AGENTS_TABLE_NAME,
+      { agentId, SK: 'profile' },
+      'SET roundRobin.maxCapacity = :maxCapacity, updatedAt = :now',
+      {
+        ':maxCapacity': capacity,
+        ':now': new Date().toISOString(),
+      }
+    );
+
+    console.log(`Agent ${agentId} max capacity updated to: ${capacity}`);
+
+    return ResponseBuilder.success({
+      message: `Max capacity updated to ${capacity}`,
+      maxCapacity: capacity,
+    });
+  } catch (error) {
+    console.error('Update agent capacity error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get assignment history for an agent
+ */
+async function getAssignmentHistory(agentId: string) {
+  try {
+    // Query all assignment records for this agent
+    const assignments = await DynamoDBService.queryItems(
+      config.AGENTS_TABLE_NAME,
+      'agentId = :agentId AND begins_with(SK, :skPrefix)',
+      {
+        ':agentId': agentId,
+        ':skPrefix': 'assignment#',
+      }
+    );
+
+    // Sort by assigned date (most recent first)
+    const sortedAssignments = assignments.sort((a: any, b: any) => 
+      b.assignedAt.localeCompare(a.assignedAt)
+    );
+
+    // Get lead details for each assignment
+    const enrichedAssignments = await Promise.all(
+      sortedAssignments.map(async (assignment: any) => {
+        const leads = await DynamoDBService.queryItems(
+          config.LEADS_TABLE_NAME,
+          'leadId = :leadId',
+          {
+            ':leadId': assignment.leadId,
+          }
+        );
+
+        const lead = leads.length > 0 ? leads[0] : null;
+
+        return {
+          assignmentId: assignment.assignmentId,
+          leadId: assignment.leadId,
+          assignedAt: assignment.assignedAt,
+          assignmentType: assignment.assignmentType,
+          status: assignment.status,
+          totalMatches: assignment.totalMatches,
+          leadInfo: lead ? {
+            leadType: lead.leadType,
+            score: lead.score,
+            price: lead.price,
+            location: lead.location,
+            currentStatus: lead.status,
+            funnelStage: lead.funnelStage,
+          } : null,
+        };
+      })
+    );
+
+    console.log(`Retrieved ${enrichedAssignments.length} assignments for agent ${agentId}`);
+
+    return ResponseBuilder.success({
+      assignments: enrichedAssignments,
+      total: enrichedAssignments.length,
+    });
+  } catch (error) {
+    console.error('Get assignment history error:', error);
     throw error;
   }
 }

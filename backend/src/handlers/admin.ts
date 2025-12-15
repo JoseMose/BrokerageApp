@@ -10,10 +10,16 @@ const config = getConfig();
  */
 export const handler = async (event: APIGatewayEvent) => {
   try {
-    console.log('Admin request:', event.httpMethod, event.path);
+    console.log('Admin request:', {
+      method: event.httpMethod,
+      path: event.path,
+      queryParams: event.queryStringParameters,
+      groups: event.requestContext?.authorizer?.claims?.['cognito:groups']
+    });
 
     // Verify admin access
     if (!RequestValidator.isAdmin(event)) {
+      console.error('Admin access denied - not in Admin group');
       return ResponseBuilder.forbidden('Admin access required');
     }
 
@@ -22,29 +28,47 @@ export const handler = async (event: APIGatewayEvent) => {
 
     // GET /admin?action=dashboard - Get dashboard overview
     if (httpMethod === 'GET' && queryParams.action === 'dashboard') {
+      console.log('Calling getDashboard');
       return await getDashboard();
     }
 
     // GET /admin?action=leads - List all leads with filters
     if (httpMethod === 'GET' && queryParams.action === 'leads') {
+      console.log('Calling listAllLeads');
       return await listAllLeads(queryParams);
     }
 
     // GET /admin?action=agents - List all agents
     if (httpMethod === 'GET' && queryParams.action === 'agents') {
+      console.log('Calling listAllAgents');
       return await listAllAgents(queryParams);
     }
 
     // GET /admin?action=transactions - List all transactions
     if (httpMethod === 'GET' && queryParams.action === 'transactions') {
+      console.log('Calling listAllTransactions');
       return await listAllTransactions(queryParams);
+    }
+
+    // GET /admin?action=analytics - Get analytics charts data
+    if (httpMethod === 'GET' && queryParams.action === 'analytics') {
+      console.log('Calling getAnalytics');
+      return await getAnalytics(queryParams);
+    }
+
+    // GET /admin?action=agent-performance - Get agent leaderboard
+    if (httpMethod === 'GET' && queryParams.action === 'agent-performance') {
+      console.log('Calling getAgentPerformance');
+      return await getAgentPerformance();
     }
 
     // POST /admin - Admin actions (suspend agent, refund, etc.)
     if (httpMethod === 'POST') {
+      console.log('Calling handleAdminAction');
       return await handleAdminAction(event);
     }
 
+    console.error('No matching admin route found');
     return ResponseBuilder.error('Invalid admin request', 400);
   } catch (error: any) {
     console.error('Admin handler error:', error);
@@ -124,7 +148,13 @@ async function getDashboard() {
       .slice(0, 10);
 
     return ResponseBuilder.success({
-      stats,
+      stats: {
+        totalLeads: stats.leads.total,
+        totalRevenue: stats.revenue.total,
+        totalAgents: stats.agents.total,
+        totalTransactions: stats.transactions.total,
+      },
+      detailedStats: stats,
       recentLeads,
       recentTransactions,
       timestamp: new Date().toISOString(),
@@ -451,4 +481,164 @@ async function refundTransaction(transactionId: string, reason: string) {
     transactionId,
     note: 'Please process the Stripe refund separately',
   });
+}
+
+/**
+ * Get analytics charts data
+ */
+async function getAnalytics(queryParams: any) {
+  try {
+    const allLeads = await DynamoDBService.scanItems(config.LEADS_TABLE_NAME);
+    const allTransactions = await DynamoDBService.scanItems(config.TRANSACTIONS_TABLE_NAME);
+
+    // Leads generated over time (last 6 months)
+    const leadsOverTime = generateTimeSeriesData(allLeads, 6, 'month');
+
+    // Revenue by month (last 6 months)
+    const revenueByMonth = generateRevenueByMonth(allTransactions, 6);
+
+    // Lead score distribution
+    const scoreDistribution = {
+      '1-3': allLeads.filter((l: Lead) => l.score >= 1 && l.score <= 3).length,
+      '4-5': allLeads.filter((l: Lead) => l.score >= 4 && l.score <= 5).length,
+      '6-7': allLeads.filter((l: Lead) => l.score >= 6 && l.score <= 7).length,
+      '8-10': allLeads.filter((l: Lead) => l.score >= 8 && l.score <= 10).length,
+    };
+
+    // Lead type breakdown
+    const leadTypeBreakdown = {
+      buyer: allLeads.filter((l: Lead) => l.leadType === 'buyer').length,
+      seller: allLeads.filter((l: Lead) => l.leadType === 'seller').length,
+    };
+
+    // Status breakdown
+    const statusBreakdown = {
+      available: allLeads.filter((l: Lead) => l.status === 'available').length,
+      sold: allLeads.filter((l: Lead) => l.status === 'sold').length,
+      assigned: allLeads.filter((l: Lead) => l.status === 'assigned').length,
+      expired: allLeads.filter((l: Lead) => isExpired(l.expiresAt)).length,
+    };
+
+    return ResponseBuilder.success({
+      leadsOverTime,
+      revenueByMonth,
+      scoreDistribution,
+      leadTypeBreakdown,
+      statusBreakdown,
+    });
+  } catch (error) {
+    console.error('Get analytics error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get agent performance leaderboard
+ */
+async function getAgentPerformance() {
+  try {
+    const allAgents = await DynamoDBService.scanItems(
+      config.AGENTS_TABLE_NAME,
+      'SK = :sk',
+      { ':sk': 'profile' }
+    );
+
+    const allTransactions = await DynamoDBService.scanItems(config.TRANSACTIONS_TABLE_NAME);
+
+    // Calculate performance metrics for each agent
+    const agentPerformance = allAgents.map((agent: Agent) => {
+      const agentTransactions = allTransactions.filter(
+        (t: Transaction) => t.agentId === agent.agentId && t.status === 'completed'
+      );
+
+      return {
+        agentId: agent.agentId,
+        name: `${agent.firstName || ''} ${agent.lastName || ''}`.trim() || agent.email,
+        email: agent.email,
+        status: agent.status,
+        metrics: {
+          totalPurchases: agentTransactions.length,
+          totalSpent: agentTransactions.reduce((sum: number, t: Transaction) => sum + t.amount, 0),
+          averageLeadScore:
+            agentTransactions.reduce((sum: number, t: Transaction) => sum + (t.leadScore || 0), 0) /
+              agentTransactions.length || 0,
+          joinedDate: agent.createdAt,
+          lastActivity: agent.lastActivityAt || agent.createdAt,
+        },
+      };
+    });
+
+    // Sort by total purchases (descending)
+    agentPerformance.sort((a, b) => b.metrics.totalPurchases - a.metrics.totalPurchases);
+
+    return ResponseBuilder.success({
+      leaderboard: agentPerformance.slice(0, 20), // Top 20
+      totalAgents: agentPerformance.length,
+    });
+  } catch (error) {
+    console.error('Get agent performance error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Helper: Generate time series data for leads
+ */
+function generateTimeSeriesData(leads: Lead[], months: number, interval: 'day' | 'month') {
+  const now = new Date();
+  const data: any[] = [];
+
+  for (let i = months - 1; i >= 0; i--) {
+    const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const monthName = date.toLocaleString('default', { month: 'short', year: 'numeric' });
+    
+    const leadsInMonth = leads.filter((l: Lead) => {
+      const leadDate = new Date(l.createdAt);
+      return (
+        leadDate.getMonth() === date.getMonth() && 
+        leadDate.getFullYear() === date.getFullYear()
+      );
+    });
+
+    data.push({
+      period: monthName,
+      count: leadsInMonth.length,
+      buyers: leadsInMonth.filter((l: Lead) => l.leadType === 'buyer').length,
+      sellers: leadsInMonth.filter((l: Lead) => l.leadType === 'seller').length,
+    });
+  }
+
+  return data;
+}
+
+/**
+ * Helper: Generate revenue by month
+ */
+function generateRevenueByMonth(transactions: Transaction[], months: number) {
+  const now = new Date();
+  const data: any[] = [];
+
+  for (let i = months - 1; i >= 0; i--) {
+    const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const monthName = date.toLocaleString('default', { month: 'short', year: 'numeric' });
+    
+    const transactionsInMonth = transactions.filter((t: Transaction) => {
+      const txDate = new Date(t.createdAt);
+      return (
+        t.status === 'completed' &&
+        txDate.getMonth() === date.getMonth() && 
+        txDate.getFullYear() === date.getFullYear()
+      );
+    });
+
+    const revenue = transactionsInMonth.reduce((sum: number, t: Transaction) => sum + t.amount, 0);
+
+    data.push({
+      period: monthName,
+      revenue,
+      transactions: transactionsInMonth.length,
+    });
+  }
+
+  return data;
 }
