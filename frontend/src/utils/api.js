@@ -43,6 +43,7 @@ export const agentAPI = {
 export const marketplaceAPI = {
   getLeads: (params) => apiClient.get('/marketplace', { params }),
   getLead: (leadId) => apiClient.get(`/leads/${leadId}`),
+  claimLead: (leadId) => apiClient.post('/claim-lead', { leadId }),
 };
 
 // Payment APIs

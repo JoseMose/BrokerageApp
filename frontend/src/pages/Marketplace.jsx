@@ -89,6 +89,29 @@ function Marketplace() {
       setError(null);
       setSelectedLead(lead);
       
+      // Check if beta mode is enabled (free leads)
+      const isBetaMode = import.meta.env.VITE_BETA_MODE === 'true';
+      
+      if (isBetaMode) {
+        // In beta mode, skip Stripe modal and purchase without payment
+        try {
+          const response = await paymentAPI.purchaseLead({
+            leadId: lead.leadId,
+            // No paymentMethodId - backend will skip payment processing
+          });
+          setPurchasedLeadData(response.data.data);
+          setPurchaseSuccess(true);
+          // Refresh leads list
+          fetchLeads();
+          return;
+        } catch (claimError) {
+          console.error('Error claiming lead:', claimError);
+          setError(claimError.response?.data?.error || 'Failed to claim lead. Please try again.');
+          return;
+        }
+      }
+      
+      // Normal payment flow
       // Lock expires 15 seconds from now
       const expiresAt = Math.floor(Date.now() / 1000) + 15;
       setLockExpiresAt(expiresAt);
@@ -258,7 +281,7 @@ function Marketplace() {
                   onClick={() => handlePurchaseClick(lead)} 
                   className="btn btn-primary btn-block"
                 >
-                  Purchase Lead
+                  {import.meta.env.VITE_BETA_MODE === 'true' ? 'Claim Lead (Free Beta)' : 'Purchase Lead'}
                 </button>
               </div>
             ))}

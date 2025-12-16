@@ -176,8 +176,29 @@ function AssignedLeads() {
     }
   };
 
-  const handleClaimLead = (lead) => {
-    setSelectedLead(lead);
+  const handleClaimLead = async (lead) => {
+    // Check if beta mode is enabled
+    const isBetaMode = import.meta.env.VITE_BETA_MODE === 'true';
+    
+    if (isBetaMode) {
+      // In beta mode, skip payment and directly purchase
+      try {
+        setClaiming(lead.leadId);
+        const response = await paymentAPI.purchaseLead({
+          leadId: lead.leadId,
+          // No paymentMethodId - backend will skip payment processing
+        });
+        handlePaymentSuccess(response.data.data);
+      } catch (error) {
+        console.error('Error claiming lead:', error);
+        setError(error.response?.data?.error || 'Failed to claim lead. Please try again.');
+      } finally {
+        setClaiming(null);
+      }
+    } else {
+      // Normal payment flow
+      setSelectedLead(lead);
+    }
   };
 
   const handlePaymentSuccess = (data) => {
@@ -329,7 +350,9 @@ function AssignedLeads() {
                       Processing...
                     </span>
                   ) : (
-                    `Claim for ${formatCurrency(lead.price)}`
+                    import.meta.env.VITE_BETA_MODE === 'true' 
+                      ? 'Claim Lead (Free Beta)' 
+                      : `Claim for ${formatCurrency(lead.price)}`
                   )}
                 </button>
                 

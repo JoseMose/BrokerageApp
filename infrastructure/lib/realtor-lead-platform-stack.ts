@@ -400,6 +400,7 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
         ...commonEnvironment,
         STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || 'PLACEHOLDER_STRIPE_KEY',
         STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || 'PLACEHOLDER_WEBHOOK_SECRET',
+        BETA_MODE: process.env.BETA_MODE || 'false',
       },
       description: 'Handles Stripe payments and transactions',
     });

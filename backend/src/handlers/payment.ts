@@ -121,8 +121,11 @@ async function purchaseLead(event: APIGatewayEvent) {
       return ResponseBuilder.error('Lead has expired', 410);
     }
 
-    // Payment method is required for all purchases
-    if (!body.paymentMethodId) {
+    // Check for beta mode - skip payment if enabled
+    const isBetaMode = process.env.BETA_MODE === 'true';
+    
+    // Payment method is required for all purchases (except in beta mode)
+    if (!isBetaMode && !body.paymentMethodId) {
       return ResponseBuilder.error('Payment method required', 400);
     }
 
@@ -163,8 +166,8 @@ async function purchaseLead(event: APIGatewayEvent) {
     let paymentIntentId = null;
     let stripeCustomerId = agent.stripeCustomerId;
 
-    // Process Stripe payment for all purchases (assigned and marketplace)
-    if (body.paymentMethodId) {
+    // Process Stripe payment for all purchases (assigned and marketplace), unless in beta mode
+    if (!isBetaMode && body.paymentMethodId) {
       // Create or get Stripe customer
       if (!stripeCustomerId) {
         const customer = await stripe.customers.create({
@@ -220,20 +223,21 @@ async function purchaseLead(event: APIGatewayEvent) {
       }
     }
 
-    // For assigned leads, no payment required (already paid for via round-robin)
+    // For assigned leads or beta mode, no payment required
 
     // Create transaction record
     const transactionId = uuidv4();
     const timestamp = new Date().toISOString();
 
-    const paymentStatus = paymentIntentId ? 'completed' : 'pending';
+    // In beta mode, mark as completed without payment
+    const paymentStatus = (isBetaMode || paymentIntentId) ? 'completed' : 'pending';
 
     const transaction: Transaction = {
       transactionId,
       timestamp,
       agentId,
       leadId: lead.leadId,
-      amount: lead.price, // Charge full price for all leads
+      amount: isBetaMode ? 0 : lead.price, // No charge in beta mode
       score: lead.score,
       stripePaymentIntentId: paymentIntentId || undefined,
       status: paymentStatus,
@@ -242,7 +246,7 @@ async function purchaseLead(event: APIGatewayEvent) {
 
     await DynamoDBService.putItem(config.TRANSACTIONS_TABLE_NAME, transaction);
 
-    // Complete purchase for successful payments
+    // Complete purchase for successful payments or beta mode
     if (paymentStatus === 'completed') {
       await completePurchase(lead.leadId, agentId, agent, lead);
     }

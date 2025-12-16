@@ -35,6 +35,7 @@ function Dashboard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const isBetaMode = import.meta.env.VITE_BETA_MODE === 'true';
   const [purchases, setPurchases] = useState([]);
   const [leadActivities, setLeadActivities] = useState({});
   const [recommendations, setRecommendations] = useState([]);
@@ -404,6 +405,21 @@ function Dashboard() {
 
   return (
     <div className="container dashboard">
+      {isBetaMode && (
+        <div className="alert alert-info" style={{ 
+          backgroundColor: '#e3f2fd', 
+          border: '1px solid #2196f3', 
+          padding: '16px', 
+          borderRadius: '8px',
+          marginBottom: '24px',
+          textAlign: 'center'
+        }}>
+          <strong>🎉 Welcome to the Beta Program!</strong>
+          <p style={{ margin: '8px 0 0 0', fontSize: '14px' }}>
+            All leads are currently FREE while we test and improve the platform. Your feedback is invaluable!
+          </p>
+        </div>
+      )}
       <div className="dashboard-header">
         <div>
           <h1>Welcome back, {profile?.name?.split(' ')[0] || 'Agent'}! 👋</h1>
