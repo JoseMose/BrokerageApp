@@ -62,6 +62,12 @@ export const handler = async (event: APIGatewayEvent) => {
       return await getAgentPerformance();
     }
 
+    // GET /admin?action=verification-requests - Get pending verification requests
+    if (httpMethod === 'GET' && queryParams.action === 'verification-requests') {
+      console.log('Calling getVerificationRequests');
+      return await getVerificationRequests();
+    }
+
     // POST /admin - Admin actions (suspend agent, refund, etc.)
     if (httpMethod === 'POST') {
       console.log('Calling handleAdminAction');
@@ -317,6 +323,12 @@ async function handleAdminAction(event: APIGatewayEvent) {
 
       case 'activate_agent':
         return await activateAgent(body.agentId);
+
+      case 'approve_agent':
+        return await approveAgent(body.agentId, event.requestContext.authorizer.claims.sub);
+
+      case 'deny_agent':
+        return await denyAgent(body.agentId, body.reason, event.requestContext.authorizer.claims.sub);
 
       case 'delete_lead':
         return await deleteLead(body.leadId);
@@ -641,4 +653,155 @@ function generateRevenueByMonth(transactions: Transaction[], months: number) {
   }
 
   return data;
+}
+
+/**
+ * Approve agent verification
+ */
+async function approveAgent(agentId: string, adminUserId: string) {
+  if (!agentId) {
+    return ResponseBuilder.error('agentId is required');
+  }
+
+  const agent = await DynamoDBService.getItem(config.AGENTS_TABLE_NAME, {
+    agentId,
+    SK: 'profile',
+  });
+
+  if (!agent) {
+    return ResponseBuilder.notFound('Agent not found');
+  }
+
+  if (agent.verificationStatus !== 'pending') {
+    return ResponseBuilder.error('Agent is not pending verification');
+  }
+
+  const timestamp = new Date().toISOString();
+
+  await DynamoDBService.updateItem(
+    config.AGENTS_TABLE_NAME,
+    { agentId, SK: 'profile' },
+    'SET verificationStatus = :status, verificationReviewedAt = :reviewedAt, verificationReviewedBy = :reviewedBy, updatedAt = :updatedAt',
+    {
+      ':status': 'approved',
+      ':reviewedAt': timestamp,
+      ':reviewedBy': adminUserId,
+      ':updatedAt': timestamp,
+    }
+  );
+
+  // Send approval email
+  const EmailService = require('../utils/email-service').EmailService;
+  EmailService.sendWelcomeEmail(agent.email, agent.name, '').catch((err: any) => {
+    console.error('Failed to send approval email:', err);
+  });
+
+  // Send approval SMS
+  if (agent.phone) {
+    const SMSService = require('../utils/sms-service').SMSService;
+    SMSService.sendWelcomeSMS(agent.phone, agent.name).catch((err: any) => {
+      console.error('Failed to send approval SMS:', err);
+    });
+  }
+
+  return ResponseBuilder.success({
+    message: 'Agent approved successfully',
+    agentId,
+  });
+}
+
+/**
+ * Deny agent verification
+ */
+async function denyAgent(agentId: string, reason: string, adminUserId: string) {
+  if (!agentId) {
+    return ResponseBuilder.error('agentId is required');
+  }
+
+  if (!reason) {
+    return ResponseBuilder.error('Denial reason is required');
+  }
+
+  const agent = await DynamoDBService.getItem(config.AGENTS_TABLE_NAME, {
+    agentId,
+    SK: 'profile',
+  });
+
+  if (!agent) {
+    return ResponseBuilder.notFound('Agent not found');
+  }
+
+  if (agent.verificationStatus !== 'pending') {
+    return ResponseBuilder.error('Agent is not pending verification');
+  }
+
+  const timestamp = new Date().toISOString();
+
+  await DynamoDBService.updateItem(
+    config.AGENTS_TABLE_NAME,
+    { agentId, SK: 'profile' },
+    'SET verificationStatus = :status, verificationDenialReason = :reason, verificationReviewedAt = :reviewedAt, verificationReviewedBy = :reviewedBy, updatedAt = :updatedAt',
+    {
+      ':status': 'denied',
+      ':reason': reason,
+      ':reviewedAt': timestamp,
+      ':reviewedBy': adminUserId,
+      ':updatedAt': timestamp,
+    }
+  );
+
+  // Send denial email (could add a separate template for this)
+  const EmailService = require('../utils/email-service').EmailService;
+  const emailBody = `
+    Dear ${agent.name},
+
+    Thank you for your interest in joining the Realtor Lead Platform.
+
+    Unfortunately, we are unable to approve your verification request at this time.
+
+    Reason: ${reason}
+
+    If you believe this is an error or would like to provide additional information, please contact our support team.
+
+    Best regards,
+    Realtor Lead Platform Team
+  `;
+
+  EmailService.sendEmail(agent.email, 'Verification Request Update', emailBody).catch((err: any) => {
+    console.error('Failed to send denial email:', err);
+  });
+
+  return ResponseBuilder.success({
+    message: 'Agent denied',
+    agentId,
+  });
+}
+
+/**
+ * Get verification requests (agents pending approval)
+ */
+async function getVerificationRequests() {
+  try {
+    // Get all agents
+    const allAgents = await DynamoDBService.scanItems(
+      config.AGENTS_TABLE_NAME,
+      'SK = :sk',
+      { ':sk': 'profile' }
+    );
+
+    // Filter pending agents and sort by request date
+    const pendingAgents = allAgents
+      .filter((agent: Agent) => agent.verificationStatus === 'pending')
+      .sort((a: Agent, b: Agent) => 
+        new Date(a.verificationRequestedAt).getTime() - new Date(b.verificationRequestedAt).getTime()
+      );
+
+    return ResponseBuilder.success({
+      requests: pendingAgents,
+      count: pendingAgents.length,
+    });
+  } catch (error) {
+    console.error('Get verification requests error:', error);
+    throw error;
+  }
 }

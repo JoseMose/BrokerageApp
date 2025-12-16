@@ -81,6 +81,19 @@ async function purchaseLead(event: APIGatewayEvent) {
       return ResponseBuilder.forbidden('Your account is not active');
     }
 
+    // Check verification status
+    if (agent.verificationStatus === 'pending') {
+      return ResponseBuilder.error(
+        'Your account is pending verification. You will receive an email once approved.',
+        403
+      );
+    } else if (agent.verificationStatus === 'denied') {
+      return ResponseBuilder.error(
+        'Your verification request was denied. Please contact support for more information.',
+        403
+      );
+    }
+
     // Get lead
     const leads = await DynamoDBService.queryItems(
       config.LEADS_TABLE_NAME,

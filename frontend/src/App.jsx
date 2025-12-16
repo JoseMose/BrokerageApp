@@ -19,7 +19,9 @@ import RealtorAuth from './pages/RealtorAuth';
 import BulkLeads from './pages/BulkLeads';
 
 // Initialize Stripe
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
+const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+console.log('Stripe Key:', stripeKey ? 'Found' : 'Missing');
+const stripePromise = stripeKey ? loadStripe(stripeKey) : null;
 
 // Protected Route wrapper
 function ProtectedRoute({ children }) {
@@ -84,14 +86,26 @@ function App() {
             <ProtectedRoute>
               <Authenticator>
                 {({ signOut, user }) => (
-                  <Elements stripe={stripePromise}>
+                  stripePromise ? (
+                    <Elements stripe={stripePromise}>
+                      <div className="app">
+                        <Navigation user={user} signOut={signOut} />
+                        <main className="main-content">
+                          <Marketplace />
+                        </main>
+                      </div>
+                    </Elements>
+                  ) : (
                     <div className="app">
                       <Navigation user={user} signOut={signOut} />
                       <main className="main-content">
-                        <Marketplace />
+                        <div style={{ padding: '20px', textAlign: 'center' }}>
+                          <h2>Payment System Configuration Error</h2>
+                          <p>Stripe is not configured. Please contact support.</p>
+                        </div>
                       </main>
                     </div>
-                  </Elements>
+                  )
                 )}
               </Authenticator>
             </ProtectedRoute>

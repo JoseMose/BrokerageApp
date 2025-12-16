@@ -91,6 +91,7 @@ export const adminAPI = {
   getDashboard: () => apiClient.get('/admin', { params: { action: 'dashboard' } }),
   getAnalytics: () => apiClient.get('/admin', { params: { action: 'analytics' } }),
   getAgentPerformance: () => apiClient.get('/admin', { params: { action: 'agent-performance' } }),
+  getVerificationRequests: () => apiClient.get('/admin', { params: { action: 'verification-requests' } }),
   getLeads: (params) => apiClient.get('/admin', { params: { action: 'leads', ...params } }),
   getAgents: (params) => apiClient.get('/admin', { params: { action: 'agents', ...params } }),
   getTransactions: (params) => apiClient.get('/admin', { params: { action: 'transactions', ...params } }),

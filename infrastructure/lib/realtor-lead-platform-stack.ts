@@ -109,7 +109,7 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
           mutable: false,
         },
         fullname: {
-          required: true,
+          required: false,  // Changed to false - we collect name during profile setup
           mutable: true,
         },
         phoneNumber: {
@@ -120,6 +120,7 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       customAttributes: {
         role: new cognito.StringAttribute({ mutable: true }), // agent or admin
         licenseId: new cognito.StringAttribute({ mutable: true }),
+        licenseState: new cognito.StringAttribute({ mutable: true }),
         brokerage: new cognito.StringAttribute({ mutable: true }),
       },
       passwordPolicy: {
@@ -467,6 +468,22 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       environment: commonEnvironment,
       description: 'Handles lead feedback and client satisfaction surveys',
     });
+
+    // Post-signup trigger - creates agent profile after Cognito confirmation
+    const postSignupFunction = new lambda.Function(this, 'PostSignupFunction', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      functionName: 'RealtorPostSignup',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/dist/post-signup')),
+      handler: 'index.handler',
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 256,
+      role: lambdaRole,
+      environment: commonEnvironment,
+      description: 'Cognito post-confirmation trigger - creates agent profile',
+    });
+
+    // Add Lambda trigger to Cognito User Pool
+    userPool.addTrigger(cognito.UserPoolOperation.POST_CONFIRMATION, postSignupFunction);
 
     // ============================================
     // STEP FUNCTIONS

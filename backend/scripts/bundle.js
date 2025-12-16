@@ -22,7 +22,9 @@ const handlers = [
   // AI Recommendations (daily 8 AM only)
   'ai-recommendations',
   // Feedback & ratings
-  'feedback'
+  'feedback',
+  // Cognito triggers
+  'post-signup'
 ];
 
 const distDir = path.join(__dirname, '..', 'dist');

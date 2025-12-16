@@ -27,6 +27,7 @@ export default function AdminDashboard() {
   const [dashboardData, setDashboardData] = useState(null);
   const [analyticsData, setAnalyticsData] = useState(null);
   const [agentPerformance, setAgentPerformance] = useState(null);
+  const [verificationRequests, setVerificationRequests] = useState(null);
 
   useEffect(() => {
     checkAdminAccess();
@@ -72,6 +73,10 @@ export default function AdminDashboard() {
         const performanceRes = await adminAPI.getAgentPerformance();
         console.log('Agent performance response:', performanceRes.data);
         setAgentPerformance(performanceRes.data.data);
+      } else if (activeTab === 'verification') {
+        const verificationRes = await adminAPI.getVerificationRequests();
+        console.log('Verification requests response:', verificationRes.data);
+        setVerificationRequests(verificationRes.data.data);
       }
     } catch (error) {
       console.error('Fetch data error:', error);
@@ -131,7 +136,7 @@ export default function AdminDashboard() {
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <nav className="flex space-x-8">
-            {['overview', 'analytics', 'agents', 'leads', 'transactions'].map((tab) => (
+            {['overview', 'verification', 'analytics', 'agents', 'leads', 'transactions'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -141,7 +146,13 @@ export default function AdminDashboard() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                {tab}
+                {tab === 'verification' && verificationRequests && verificationRequests.count > 0 ? (
+                  <span>
+                    {tab} <span className="ml-1 px-2 py-0.5 text-xs font-semibold text-white bg-red-500 rounded-full">{verificationRequests.count}</span>
+                  </span>
+                ) : (
+                  tab
+                )}
               </button>
             ))}
           </nav>
@@ -151,6 +162,7 @@ export default function AdminDashboard() {
       {/* Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'overview' && <OverviewTab data={dashboardData} analytics={analyticsData} />}
+        {activeTab === 'verification' && <VerificationTab requests={verificationRequests} onUpdate={fetchData} />}
         {activeTab === 'analytics' && <AnalyticsTab data={analyticsData} />}
         {activeTab === 'agents' && <AgentsTab performance={agentPerformance} />}
         {activeTab === 'leads' && <LeadsTab />}
@@ -427,6 +439,189 @@ function StatusBadge({ label, count, color }) {
     <div className={`${colorClasses[color]} rounded-lg p-4 text-center`}>
       <div className="text-2xl font-bold">{count}</div>
       <div className="text-sm font-medium mt-1">{label}</div>
+    </div>
+  );
+}
+
+function VerificationTab({ requests, onUpdate }) {
+  const [processingId, setProcessingId] = useState(null);
+  const [denyReason, setDenyReason] = useState('');
+  const [showDenyModal, setShowDenyModal] = useState(null);
+
+  if (!requests) {
+    return <div className="text-center py-12">Loading verification requests...</div>;
+  }
+
+  const handleApprove = async (agentId) => {
+    if (!confirm('Are you sure you want to approve this agent?')) return;
+    
+    setProcessingId(agentId);
+    try {
+      await adminAPI.performAction({
+        action: 'approve_agent',
+        agentId,
+      });
+      alert('Agent approved successfully!');
+      onUpdate(); // Refresh the list
+    } catch (error) {
+      console.error('Approve error:', error);
+      alert('Failed to approve agent: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleDeny = async (agentId) => {
+    if (!denyReason.trim()) {
+      alert('Please provide a reason for denial');
+      return;
+    }
+
+    setProcessingId(agentId);
+    try {
+      await adminAPI.performAction({
+        action: 'deny_agent',
+        agentId,
+        reason: denyReason,
+      });
+      alert('Agent denied.');
+      setShowDenyModal(null);
+      setDenyReason('');
+      onUpdate(); // Refresh the list
+    } catch (error) {
+      console.error('Deny error:', error);
+      alert('Failed to deny agent: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  if (requests.count === 0) {
+    return (
+      <div className="text-center py-12 bg-white rounded-lg shadow">
+        <div className="text-gray-500">
+          <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">No pending requests</h3>
+          <p className="mt-1 text-sm text-gray-500">All agent verification requests have been processed.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-900">Agent Verification Requests</h2>
+        <p className="mt-1 text-sm text-gray-600">{requests.count} pending approval</p>
+      </div>
+
+      <div className="bg-white shadow overflow-hidden sm:rounded-md">
+        <ul className="divide-y divide-gray-200">
+          {requests.requests.map((agent) => (
+            <li key={agent.agentId} className="px-6 py-5">
+              <div className="flex items-center justify-between">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center space-x-3">
+                    <div className="flex-shrink-0">
+                      <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center">
+                        <span className="text-blue-600 font-semibold text-lg">
+                          {agent.name.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-lg font-medium text-gray-900 truncate">{agent.name}</h3>
+                      <p className="text-sm text-gray-500">{agent.email}</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Requested {new Date(agent.verificationRequestedAt).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-4">
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">License</dt>
+                      <dd className="mt-1 text-sm text-gray-900">
+                        {agent.licenseId} ({agent.licenseState})
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Brokerage</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{agent.brokerage}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Phone</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{agent.phone}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Location</dt>
+                      <dd className="mt-1 text-sm text-gray-900">
+                        {agent.location.city}, {agent.location.state}
+                      </dd>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="ml-6 flex flex-col space-y-2">
+                  <button
+                    onClick={() => handleApprove(agent.agentId)}
+                    disabled={processingId === agent.agentId}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
+                  >
+                    {processingId === agent.agentId ? 'Processing...' : 'Approve'}
+                  </button>
+                  <button
+                    onClick={() => setShowDenyModal(agent.agentId)}
+                    disabled={processingId === agent.agentId}
+                    className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+                  >
+                    Deny
+                  </button>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Deny Modal */}
+      {showDenyModal && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Deny Verification Request</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Please provide a reason for denying this agent's verification request:
+            </p>
+            <textarea
+              value={denyReason}
+              onChange={(e) => setDenyReason(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+              rows="4"
+              placeholder="e.g., License number could not be verified, Invalid brokerage information, etc."
+            />
+            <div className="mt-4 flex space-x-3">
+              <button
+                onClick={() => handleDeny(showDenyModal)}
+                disabled={processingId === showDenyModal || !denyReason.trim()}
+                className="flex-1 inline-flex justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+              >
+                {processingId === showDenyModal ? 'Processing...' : 'Confirm Deny'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowDenyModal(null);
+                  setDenyReason('');
+                }}
+                className="flex-1 inline-flex justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

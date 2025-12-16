@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { agentAPI } from '../utils/api';
 import { formatCurrency, formatDateTime } from '../utils/helpers';
 import AssignedLeads from '../components/AssignedLeads';
@@ -29,6 +30,7 @@ import './Dashboard.css';
  */
 
 function Dashboard() {
+  const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -149,8 +151,22 @@ function Dashboard() {
     try {
       setLoading(true);
       const response = await agentAPI.getProfile();
-      setProfile(response.data.data.profile);
+      const profileData = response.data.data.profile;
+      setProfile(profileData);
       setStats(response.data.data.stats);
+
+      // Check verification status
+      if (profileData && profileData.verificationStatus) {
+        if (profileData.verificationStatus === 'pending') {
+          setError('Your account is pending verification. You will receive an email once approved by an administrator.');
+          setLoading(false);
+          return;
+        } else if (profileData.verificationStatus === 'denied') {
+          setError('Your verification request was denied. Please contact support for more information.');
+          setLoading(false);
+          return;
+        }
+      }
       
       const purchasedLeads = response.data.data.purchasedLeads || [];
       const individualLeads = purchasedLeads.filter(
@@ -323,15 +339,64 @@ function Dashboard() {
   if (error) {
     return (
       <div className="container">
-        <div className="alert alert-error">{error}</div>
-        {error.includes('not found') && (
-          <div className="card">
-            <h3>Welcome! Complete Your Profile</h3>
-            <p>To start viewing and purchasing leads, please complete your agent profile.</p>
-            <a href="/profile" className="btn btn-primary">
-              Set Up Profile
-            </a>
+        {error.includes('pending verification') && (
+          <div className="card" style={{ maxWidth: '600px', margin: '40px auto', textAlign: 'center' }}>
+            <div style={{ fontSize: '48px', marginBottom: '20px' }}>⏳</div>
+            <h2>Account Pending Verification</h2>
+            <p style={{ color: '#666', marginTop: '16px', lineHeight: '1.6' }}>
+              Thank you for signing up! Your account is currently under review.
+            </p>
+            <p style={{ color: '#666', lineHeight: '1.6' }}>
+              An administrator will verify your license information and approve your account shortly. 
+              You'll receive an email notification once your account is approved.
+            </p>
+            <div style={{ marginTop: '24px', padding: '16px', backgroundColor: '#f3f4f6', borderRadius: '8px' }}>
+              <p style={{ fontSize: '14px', color: '#666', margin: 0 }}>
+                This usually takes 1-2 business days. Check your email for updates.
+              </p>
+            </div>
           </div>
+        )}
+        {error.includes('denied') && (
+          <div className="card" style={{ maxWidth: '600px', margin: '40px auto', textAlign: 'center' }}>
+            <div style={{ fontSize: '48px', marginBottom: '20px' }}>❌</div>
+            <h2>Verification Request Denied</h2>
+            <p style={{ color: '#666', marginTop: '16px', lineHeight: '1.6' }}>
+              We were unable to verify your account information at this time.
+            </p>
+            <p style={{ color: '#666', lineHeight: '1.6' }}>
+              If you believe this is an error or would like to provide additional information, 
+              please contact our support team at support@realtorleads.com
+            </p>
+          </div>
+        )}
+        {!error.includes('pending') && !error.includes('denied') && error.includes('not found') && (
+          <div className="card" style={{ maxWidth: '600px', margin: '40px auto', textAlign: 'center' }}>
+            <div style={{ fontSize: '48px', marginBottom: '20px' }}>📋</div>
+            <h2>Welcome! Complete Your Profile</h2>
+            <p style={{ color: '#666', marginTop: '16px', lineHeight: '1.6' }}>
+              To start viewing and purchasing leads, please complete your agent profile with:
+            </p>
+            <ul style={{ textAlign: 'left', maxWidth: '400px', margin: '20px auto', color: '#666' }}>
+              <li>License ID & State</li>
+              <li>Brokerage Information</li>
+              <li>Service Area & Radius</li>
+              <li>Lead Preferences</li>
+            </ul>
+            <p style={{ color: '#666', marginBottom: '24px' }}>
+              After submission, your account will be reviewed by an administrator for verification.
+            </p>
+            <button 
+              onClick={() => navigate('/profile')} 
+              className="btn btn-primary"
+              style={{ padding: '12px 32px', fontSize: '16px' }}
+            >
+              Complete Profile Setup →
+            </button>
+          </div>
+        )}
+        {!error.includes('pending') && !error.includes('denied') && !error.includes('not found') && (
+          <div className="alert alert-error">{error}</div>
         )}
       </div>
     );

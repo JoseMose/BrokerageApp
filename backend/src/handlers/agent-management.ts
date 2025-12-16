@@ -19,6 +19,32 @@ export const handler = async (event: APIGatewayEvent) => {
     const httpMethod = event.httpMethod;
     const path = event.path;
 
+    // Allow profile creation (POST) without verification check
+    // Check verification status for all other operations
+    if (httpMethod !== 'POST' || path.includes('/activity') || path.includes('/pass-lead')) {
+      const agent = await DynamoDBService.getItem(config.AGENTS_TABLE_NAME, {
+        agentId,
+        SK: 'profile',
+      });
+
+      if (!agent) {
+        // Agent profile doesn't exist yet - allow GET to return proper error
+        if (httpMethod !== 'GET') {
+          return ResponseBuilder.error('Please complete your profile setup first', 403);
+        }
+      } else if (agent.verificationStatus === 'pending') {
+        return ResponseBuilder.error(
+          'Your account is pending verification. You will receive an email once approved.',
+          403
+        );
+      } else if (agent.verificationStatus === 'denied') {
+        return ResponseBuilder.error(
+          'Your verification request was denied. Please contact support for more information.',
+          403
+        );
+      }
+    }
+
     // POST /agents/leads/{leadId}/activity - Log activity for a lead
     if (httpMethod === 'POST' && path.includes('/agents/leads/') && path.includes('/activity')) {
       const leadId = event.pathParameters?.leadId;
@@ -251,6 +277,7 @@ async function createAgentProfile(agentId: string, event: APIGatewayEvent) {
     RequestValidator.validateRequired({
       name: body.name,
       licenseId: body.licenseId,
+      licenseState: body.licenseState,
       brokerage: body.brokerage,
       phone: body.phone,
       'location.address': body.location?.address,
@@ -285,6 +312,7 @@ async function createAgentProfile(agentId: string, event: APIGatewayEvent) {
       email,
       name: body.name!,
       licenseId: body.licenseId!,
+      licenseState: body.licenseState?.toUpperCase(),
       brokerage: body.brokerage!,
       phone: body.phone!.replace(/\D/g, ''),
       location: {
@@ -316,6 +344,8 @@ async function createAgentProfile(agentId: string, event: APIGatewayEvent) {
         isOnline: true, // Online by default
       },
       status: 'active',
+      verificationStatus: 'pending',
+      verificationRequestedAt: timestamp,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -324,22 +354,13 @@ async function createAgentProfile(agentId: string, event: APIGatewayEvent) {
 
     console.log('Agent profile created:', agentId);
 
-    // Send welcome email (async, don't block response)
-    EmailService.sendWelcomeEmail(agent.email, agent.name, '').catch((err) => {
-      console.error('Failed to send welcome email:', err);
-    });
-
-    // Send welcome SMS
-    if (agent.phone) {
-      SMSService.sendWelcomeSMS(agent.phone, agent.name).catch((err) => {
-        console.error('Failed to send welcome SMS:', err);
-      });
-    }
+    // Don't send welcome email/SMS yet - wait for approval
+    // Email/SMS will be sent after admin approves the account
 
     return ResponseBuilder.success(
       {
         profile: agent,
-        message: 'Agent profile created successfully',
+        message: 'Profile submitted successfully. Your account is pending verification and will be reviewed by an administrator.',
       },
       201
     );

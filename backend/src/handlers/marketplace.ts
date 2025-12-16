@@ -30,6 +30,19 @@ export const handler = async (event: APIGatewayEvent) => {
       return ResponseBuilder.forbidden('Your account is not active. Please contact support.');
     }
 
+    // Check verification status
+    if (agent.verificationStatus === 'pending') {
+      return ResponseBuilder.error(
+        'Your account is pending verification. You will receive an email once approved.',
+        403
+      );
+    } else if (agent.verificationStatus === 'denied') {
+      return ResponseBuilder.error(
+        'Your verification request was denied. Please contact support for more information.',
+        403
+      );
+    }
+
     // GET /marketplace - List available leads
     if (httpMethod === 'GET' && !event.pathParameters?.leadId) {
       return await listAvailableLeads(agent, event.queryStringParameters);

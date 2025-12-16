@@ -58,6 +58,7 @@ export interface Agent {
   email: string;
   name: string;
   licenseId: string;
+  licenseState?: string; // State where license is issued
   brokerage: string;
   phone: string;
   location: {
@@ -93,6 +94,11 @@ export interface Agent {
   };
   stripeCustomerId?: string;
   status: 'active' | 'suspended';
+  verificationStatus: 'pending' | 'approved' | 'denied';
+  verificationRequestedAt: string;
+  verificationReviewedAt?: string;
+  verificationReviewedBy?: string; // Admin user ID who reviewed
+  verificationDenialReason?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -153,6 +159,7 @@ export interface AgentProfileUpdateRequest {
   name?: string;
   phone?: string;
   licenseId?: string;
+  licenseState?: string;
   brokerage?: string;
   location?: {
     address: string;
