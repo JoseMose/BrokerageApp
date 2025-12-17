@@ -133,7 +133,23 @@ async function getAgentProfile(agentId: string) {
       return ResponseBuilder.notFound('Agent profile not found. Please complete your profile setup.');
     }
 
-    // Get agent's purchased leads
+    // Get ALL leads owned by this agent (claimed, purchased, or created)
+    // Query by assignedAgent instead of just transactions
+    const allLeads = await DynamoDBService.scanItems(
+      config.LEADS_TABLE_NAME,
+      'assignedAgent = :agentId AND #sk = :metadata',
+      {
+        ':agentId': agentId,
+        ':metadata': 'metadata',
+      },
+      {
+        '#sk': 'SK',
+      }
+    );
+
+    console.log(`Found ${allLeads.length} total leads for agent ${agentId}`);
+
+    // Get transactions for these leads (if they exist)
     const transactions = await DynamoDBService.queryItems(
       config.TRANSACTIONS_TABLE_NAME,
       'agentId = :agentId',
@@ -143,44 +159,32 @@ async function getAgentProfile(agentId: string) {
       'AgentTransactionsIndex'
     );
 
-    const completedTransactions = transactions.filter(
-      (tx: any) => tx.status === 'completed'
-    );
-
-    // Handle both old format (leadIds array) and new format (single leadId)
-    const leadsWithDetails: any[] = [];
-    
-    for (const tx of completedTransactions) {
-      if (tx.leadIds && Array.isArray(tx.leadIds)) {
-        // Old bulk format - query all leads in the array
-        for (const leadId of tx.leadIds) {
-          const leads = await DynamoDBService.queryItems(
-            config.LEADS_TABLE_NAME,
-            'leadId = :leadId',
-            { ':leadId': leadId }
-          );
-          if (leads[0]) {
-            leadsWithDetails.push({
-              transaction: { ...tx, leadId }, // Add leadId to transaction for consistency
-              lead: leads[0],
-            });
-          }
-        }
-      } else if (tx.leadId) {
-        // New format - single leadId
-        const leads = await DynamoDBService.queryItems(
-          config.LEADS_TABLE_NAME,
-          'leadId = :leadId',
-          { ':leadId': tx.leadId }
-        );
-        if (leads[0]) {
-          leadsWithDetails.push({
-            transaction: tx,
-            lead: leads[0],
-          });
-        }
+    const transactionMap = new Map();
+    transactions.forEach((tx: any) => {
+      if (tx.leadId) {
+        transactionMap.set(tx.leadId, tx);
       }
-    }
+      if (tx.leadIds && Array.isArray(tx.leadIds)) {
+        tx.leadIds.forEach((lid: string) => {
+          transactionMap.set(lid, { ...tx, leadId: lid });
+        });
+      }
+    });
+
+    // Build leads with their transaction details (if they have one)
+    const leadsWithDetails = allLeads.map((lead: any) => ({
+      transaction: transactionMap.get(lead.leadId) || {
+        leadId: lead.leadId,
+        agentId: agentId,
+        amount: lead.price || 0,
+        status: 'completed',
+        createdAt: lead.claimedAt || lead.createdAt,
+        source: lead.source || 'unknown',
+      },
+      lead: lead,
+    }));
+
+    console.log(`Returning ${leadsWithDetails.length} leads with details for agent ${agentId}`);
 
     return ResponseBuilder.success({
       profile: agent,
