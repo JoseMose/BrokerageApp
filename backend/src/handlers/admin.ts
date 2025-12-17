@@ -792,16 +792,18 @@ async function getVerificationRequests() {
     // Filter pending agents and sort by request date
     const pendingAgents = allAgents
       .filter((agent: Agent) => agent.verificationStatus === 'pending')
-      .sort((a: Agent, b: Agent) => 
-        new Date(a.verificationRequestedAt).getTime() - new Date(b.verificationRequestedAt).getTime()
-      );
+      .sort((a: Agent, b: Agent) => {
+        const dateA = a.verificationRequestedAt || a.createdAt || '';
+        const dateB = b.verificationRequestedAt || b.createdAt || '';
+        return new Date(dateA).getTime() - new Date(dateB).getTime();
+      });
 
     return ResponseBuilder.success({
       requests: pendingAgents,
       count: pendingAgents.length,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Get verification requests error:', error);
-    throw error;
+    return ResponseBuilder.serverError('Failed to get verification requests', error);
   }
 }
