@@ -891,7 +891,7 @@ async function updateAgentCapacity(agentId: string, event: APIGatewayEvent) {
 async function createOwnLead(agentId: string, event: APIGatewayEvent) {
   try {
     const body = JSON.parse(event.body || '{}');
-    const { contact, leadType, location, budget, notes } = body;
+    const { contact, leadType, location, budget, notes, questionnaire } = body;
 
     // Validate required fields
     if (!contact?.name || !contact?.email || !contact?.phone) {
@@ -916,6 +916,9 @@ async function createOwnLead(agentId: string, event: APIGatewayEvent) {
     const leadId = `lead_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const now = new Date().toISOString();
 
+    // Extract budget from questionnaire if provided
+    const leadBudget = questionnaire?.budget || budget || '';
+
     // Create lead object
     const lead = {
       leadId,
@@ -936,21 +939,33 @@ async function createOwnLead(agentId: string, event: APIGatewayEvent) {
         phone: contact.phone,
       },
       location: location || {},
-      budget: budget || '',
+      responses: {
+        budget: leadBudget,
+      },
       notes: notes || '',
-      agentActivities: [],
+      activities: [],
     };
+
+    console.log(`Creating lead for agent ${agentId}:`, JSON.stringify(lead, null, 2));
 
     // Save lead to DynamoDB
     await DynamoDBService.putItem(config.LEADS_TABLE_NAME, lead);
 
+    console.log(`Successfully saved lead ${leadId} to DynamoDB`);
+
     // Update agent's performance metrics
-    await DynamoDBService.updateItem(
-      config.AGENTS_TABLE_NAME,
-      { agentId, SK: 'profile' },
-      'ADD performanceMetrics.selfGeneratedLeads :one',
-      { ':one': 1 }
-    );
+    try {
+      await DynamoDBService.updateItem(
+        config.AGENTS_TABLE_NAME,
+        { agentId, SK: 'profile' },
+        'ADD performanceMetrics.selfGeneratedLeads :one',
+        { ':one': 1 }
+      );
+      console.log(`Updated agent ${agentId} performance metrics`);
+    } catch (updateError) {
+      console.error('Error updating agent metrics:', updateError);
+      // Don't fail the whole operation if metrics update fails
+    }
 
     console.log(`Agent ${agentId} created own lead: ${leadId}`);
 
