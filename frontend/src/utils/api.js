@@ -37,6 +37,7 @@ export const agentAPI = {
   getAIRecommendations: (leads) => apiClient.post('/agents/ai-recommendations', { leads }),
   updateLeadStage: (leadId, funnelStage) => apiClient.put(`/agents/leads/${leadId}`, { funnelStage }),
   logLeadActivity: (leadId, activity) => apiClient.post(`/agents/leads/${leadId}/activity`, activity),
+  createOwnLead: (data) => apiClient.post('/agents/create-lead', data),
 };
 
 // Marketplace APIs

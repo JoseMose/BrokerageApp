@@ -77,6 +77,11 @@ export const handler = async (event: APIGatewayEvent) => {
       return await passLeadToNext(agentId, leadId);
     }
 
+    // POST /agents/create-lead - Create own lead
+    if (httpMethod === 'POST' && path.includes('/create-lead')) {
+      return await createOwnLead(agentId, event);
+    }
+
     // GET /agents - Get agent profile
     if (httpMethod === 'GET') {
       return await getAgentProfile(agentId);
@@ -872,6 +877,93 @@ async function updateAgentCapacity(agentId: string, event: APIGatewayEvent) {
     });
   } catch (error) {
     console.error('Update agent capacity error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Create own lead - allows agents to manually add leads they acquired
+ */
+async function createOwnLead(agentId: string, event: APIGatewayEvent) {
+  try {
+    const body = JSON.parse(event.body || '{}');
+    const { contact, leadType, location, budget, notes } = body;
+
+    // Validate required fields
+    if (!contact?.name || !contact?.email || !contact?.phone) {
+      return ResponseBuilder.error('Name, email, and phone are required', 400);
+    }
+
+    if (!leadType || !['buyer', 'seller'].includes(leadType)) {
+      return ResponseBuilder.error('Valid lead type (buyer/seller) is required', 400);
+    }
+
+    // Get agent profile to verify they're verified
+    const agent = await DynamoDBService.getItem(config.AGENTS_TABLE_NAME, {
+      agentId,
+      SK: 'profile',
+    });
+
+    if (!agent) {
+      return ResponseBuilder.error('Agent profile not found', 404);
+    }
+
+    // Generate lead ID
+    const leadId = `lead_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const now = new Date().toISOString();
+
+    // Create lead object
+    const lead = {
+      leadId,
+      SK: 'metadata',
+      leadType,
+      status: 'claimed', // Directly claimed by the agent
+      funnelStage: 'new_match', // Start at first funnel stage
+      assignedAgent: agentId,
+      claimedAt: now,
+      createdAt: now,
+      updatedAt: now,
+      source: 'agent_manual',
+      score: 5, // Default score for manually created leads
+      price: 0, // No cost for self-generated leads
+      contact: {
+        name: contact.name,
+        email: contact.email,
+        phone: contact.phone,
+      },
+      location: location || {},
+      budget: budget || '',
+      notes: notes || '',
+      agentActivities: [],
+    };
+
+    // Save lead to DynamoDB
+    await DynamoDBService.putItem(config.LEADS_TABLE_NAME, lead);
+
+    // Update agent's performance metrics
+    await DynamoDBService.updateItem(
+      config.AGENTS_TABLE_NAME,
+      { agentId, SK: 'profile' },
+      'ADD performanceMetrics.selfGeneratedLeads :one',
+      { ':one': 1 }
+    );
+
+    console.log(`Agent ${agentId} created own lead: ${leadId}`);
+
+    return ResponseBuilder.success({
+      message: 'Lead created successfully',
+      lead: {
+        leadId,
+        leadType,
+        status: lead.status,
+        funnelStage: lead.funnelStage,
+        contact: lead.contact,
+        location: lead.location,
+        createdAt: lead.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error('Create own lead error:', error);
     throw error;
   }
 }

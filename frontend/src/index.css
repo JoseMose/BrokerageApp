@@ -169,6 +169,49 @@
   .choice-btn.selected {
     @apply border-primary-500 bg-primary-50 shadow-lg;
   }
+
+  /* Create Lead Form */
+  .create-lead-form {
+    @apply space-y-6;
+  }
+
+  .create-lead-form .form-section {
+    @apply bg-gray-50 rounded-lg p-4;
+  }
+
+  .create-lead-form .form-section h3 {
+    @apply text-lg font-semibold mb-4 text-gray-700;
+  }
+
+  .create-lead-form .form-row {
+    @apply flex flex-wrap gap-4 mb-4;
+  }
+
+  .create-lead-form .form-group {
+    @apply flex-1 min-w-[200px];
+  }
+
+  .create-lead-form .form-group label {
+    @apply block text-sm font-medium text-gray-700 mb-1;
+  }
+
+  .create-lead-form .form-group input,
+  .create-lead-form .form-group select,
+  .create-lead-form .form-group textarea {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+  }
+
+  .create-lead-form .form-group textarea {
+    @apply resize-y;
+  }
+
+  .create-lead-form .modal-actions {
+    @apply flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200;
+  }
+
+  .create-lead-form .btn-cancel {
+    @apply px-6 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors;
+  }
 }
 
 @layer utilities {

@@ -94,9 +94,13 @@ function RealtorAuth() {
           }}
         >
           {({ user }) => {
-            if (user) {
-              navigate('/dashboard');
-            }
+            // Use effect to navigate instead of direct call to avoid setState in render
+            useEffect(() => {
+              if (user) {
+                navigate('/dashboard');
+              }
+            }, [user]);
+            
             return null;
           }}
         </Authenticator>

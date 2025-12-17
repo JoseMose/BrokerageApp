@@ -67,6 +67,18 @@ function PurchaseHistory() {
   const [leadActivities, setLeadActivities] = useState({}); // Store activities per lead
   const [ratingModalLead, setRatingModalLead] = useState(null); // Lead being rated
   const [leadFeedback, setLeadFeedback] = useState({}); // Track which leads have feedback
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createFormData, setCreateFormData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    leadType: 'buyer',
+    city: '',
+    state: '',
+    zip: '',
+    budget: '',
+    notes: ''
+  });
 
   // Load activities from localStorage on mount
   useEffect(() => {
@@ -286,6 +298,54 @@ function PurchaseHistory() {
     }
   };
 
+  const handleCreateLead = async (e) => {
+    e.preventDefault();
+    
+    try {
+      // Create the lead via agent API
+      const response = await agentAPI.createOwnLead({
+        contact: {
+          name: createFormData.name,
+          email: createFormData.email,
+          phone: createFormData.phone,
+        },
+        leadType: createFormData.leadType,
+        location: {
+          city: createFormData.city,
+          state: createFormData.state,
+          zip: createFormData.zip,
+        },
+        questionnaire: {
+          budget: createFormData.budget || 'not-specified',
+        },
+        notes: createFormData.notes,
+        source: 'agent_manual',
+      });
+
+      alert('Lead created successfully! It will appear in your funnel.');
+      
+      // Reset form and close modal
+      setCreateFormData({
+        name: '',
+        email: '',
+        phone: '',
+        leadType: 'buyer',
+        city: '',
+        state: '',
+        zip: '',
+        budget: '',
+        notes: ''
+      });
+      setShowCreateModal(false);
+      
+      // Refresh the list
+      fetchPurchaseHistory();
+    } catch (err) {
+      console.error('Error creating lead:', err);
+      alert(err.response?.data?.message || 'Failed to create lead. Please try again.');
+    }
+  };
+
   const getLeadsByStage = (stageId) => {
     return purchases.filter(p => (p.lead?.funnelStage || 'new_match') === stageId);
   };
@@ -337,8 +397,38 @@ function PurchaseHistory() {
 
   return (
     <div className="container purchase-history">
-      <h1>🎯 My Lead Funnel</h1>
-      <p className="subtitle">Track your leads through each stage from first contact to closed deal</p>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+        <div>
+          <h1>🎯 My Lead Funnel</h1>
+          <p className="subtitle">Track your leads through each stage from first contact to closed deal</p>
+        </div>
+        <button 
+          onClick={() => setShowCreateModal(true)}
+          className="btn btn-primary"
+          style={{ 
+            padding: '12px 24px',
+            fontSize: '16px',
+            fontWeight: '600',
+            borderRadius: '8px',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            border: 'none',
+            color: 'white',
+            cursor: 'pointer',
+            boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+            transition: 'transform 0.2s, box-shadow 0.2s'
+          }}
+          onMouseOver={(e) => {
+            e.target.style.transform = 'translateY(-2px)';
+            e.target.style.boxShadow = '0 6px 8px rgba(0,0,0,0.15)';
+          }}
+          onMouseOut={(e) => {
+            e.target.style.transform = 'translateY(0)';
+            e.target.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+          }}
+        >
+          + Create Your Own Lead
+        </button>
+      </div>
 
       {/* Bulk Packages Section */}
       {bulkPackages.length > 0 && (
@@ -691,6 +781,145 @@ function PurchaseHistory() {
         onClose={() => setRatingModalLead(null)}
         onSubmit={handleRatingSubmit}
       />
+
+      {/* Create Lead Modal */}
+      {showCreateModal && (
+        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="modal-header">
+              <h2>➕ Create Your Own Lead</h2>
+              <button className="modal-close" onClick={() => setShowCreateModal(false)}>✕</button>
+            </div>
+            
+            <form onSubmit={handleCreateLead} className="create-lead-form">
+              <div className="form-section">
+                <h3>Contact Information</h3>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={createFormData.name}
+                      onChange={(e) => setCreateFormData({...createFormData, name: e.target.value})}
+                      placeholder="John Smith"
+                    />
+                  </div>
+                </div>
+                
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Email *</label>
+                    <input
+                      type="email"
+                      required
+                      value={createFormData.email}
+                      onChange={(e) => setCreateFormData({...createFormData, email: e.target.value})}
+                      placeholder="john@example.com"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Phone *</label>
+                    <input
+                      type="tel"
+                      required
+                      value={createFormData.phone}
+                      onChange={(e) => setCreateFormData({...createFormData, phone: e.target.value})}
+                      placeholder="(555) 123-4567"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-section">
+                <h3>Lead Details</h3>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Lead Type *</label>
+                    <select
+                      value={createFormData.leadType}
+                      onChange={(e) => setCreateFormData({...createFormData, leadType: e.target.value})}
+                    >
+                      <option value="buyer">🏠 Buyer</option>
+                      <option value="seller">💰 Seller</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>City</label>
+                    <input
+                      type="text"
+                      value={createFormData.city}
+                      onChange={(e) => setCreateFormData({...createFormData, city: e.target.value})}
+                      placeholder="Atlanta"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>State</label>
+                    <input
+                      type="text"
+                      value={createFormData.state}
+                      onChange={(e) => setCreateFormData({...createFormData, state: e.target.value})}
+                      placeholder="GA"
+                      maxLength="2"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>ZIP</label>
+                    <input
+                      type="text"
+                      value={createFormData.zip}
+                      onChange={(e) => setCreateFormData({...createFormData, zip: e.target.value})}
+                      placeholder="30301"
+                      maxLength="5"
+                    />
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Budget</label>
+                    <select
+                      value={createFormData.budget}
+                      onChange={(e) => setCreateFormData({...createFormData, budget: e.target.value})}
+                    >
+                      <option value="">Select budget range...</option>
+                      <option value="under-300k">Under $300k</option>
+                      <option value="300k-500k">$300k - $500k</option>
+                      <option value="500k-750k">$500k - $750k</option>
+                      <option value="750k-1m">$750k - $1M</option>
+                      <option value="over-1m">Over $1M</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Notes</label>
+                    <textarea
+                      value={createFormData.notes}
+                      onChange={(e) => setCreateFormData({...createFormData, notes: e.target.value})}
+                      placeholder="Add any additional details about this lead..."
+                      rows="4"
+                    ></textarea>
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-actions">
+                <button type="button" className="btn-cancel" onClick={() => setShowCreateModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary">
+                  Create Lead
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
