@@ -398,7 +398,8 @@ function LeadsTab() {
     try {
       setLoading(true);
       const response = await adminAPI.getLeads();
-      setLeads(response.data.leads || []);
+      console.log('Admin leads response:', response.data);
+      setLeads(response.data.data?.leads || []);
     } catch (err) {
       console.error('Error loading leads:', err);
     } finally {
