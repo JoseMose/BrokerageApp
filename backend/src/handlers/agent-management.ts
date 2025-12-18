@@ -696,7 +696,7 @@ async function updateLeadFunnelStage(agentId: string, leadId: string, event: API
     const lead = leads[0];
 
     // Verify the lead belongs to this agent
-    if (lead.claimedBy !== agentId && lead.assignedTo !== agentId) {
+    if (lead.claimedBy !== agentId && lead.assignedTo !== agentId && lead.assignedAgent !== agentId) {
       return ResponseBuilder.forbidden('You do not have permission to update this lead');
     }
 
