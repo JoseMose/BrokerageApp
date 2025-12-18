@@ -664,11 +664,12 @@ async function completePurchase(leadId: string, agentId: string, agent: any, lea
   await DynamoDBService.updateItem(
     config.LEADS_TABLE_NAME,
     { leadId, timestamp: lead.timestamp },
-    'SET #status = :status, claimedBy = :agentId, claimedAt = :timestamp, GSI1PK = :gsi1pk',
+    'SET #status = :status, claimedBy = :agentId, assignedAgent = :agentId, claimedAt = :timestamp, funnelStage = :funnelStage, GSI1PK = :gsi1pk',
     {
       ':status': 'sold',
       ':agentId': agentId,
       ':timestamp': timestamp,
+      ':funnelStage': 'new_match',
       ':gsi1pk': `sold#${lead.leadType}`,
     },
     {
