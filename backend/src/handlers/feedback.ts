@@ -123,11 +123,15 @@ async function submitLeadFeedback(event: APIGatewayEvent, agentId: string) {
     return ResponseBuilder.error('Lead ID is required', 400);
   }
 
-  // Validate ratings (1-5)
+  if (!body.contacted) {
+    return ResponseBuilder.error('Contacted status is required', 400);
+  }
+
+  // Validate all ratings are provided (1-5)
   const ratings = ['contactability', 'accuracy', 'engagement', 'conversionPotential', 'overallQuality'];
   for (const rating of ratings) {
-    if (body[rating] && (body[rating] < 1 || body[rating] > 5)) {
-      return ResponseBuilder.error(`${rating} must be between 1 and 5`, 400);
+    if (!body[rating] || body[rating] < 1 || body[rating] > 5) {
+      return ResponseBuilder.error(`${rating} is required and must be between 1 and 5`, 400);
     }
   }
 
@@ -180,15 +184,7 @@ async function submitLeadFeedback(event: APIGatewayEvent, agentId: string) {
     ...feedback,
   });
 
-  // Update lead with feedback flag
-  await DynamoDBService.updateItem(
-    config.LEADS_TABLE_NAME,
-    { leadId: body.leadId, timestamp: ownedLead.leadTimestamp || timestamp },
-    'SET hasFeedback = :true, feedbackAt = :timestamp',
-    { ':true': true, ':timestamp': timestamp }
-  );
-
-  // If quality is very low (avg < 2), flag for review
+  // Calculate average quality score
   const avgQuality =
     (feedback.contactability +
       feedback.accuracy +
@@ -197,6 +193,22 @@ async function submitLeadFeedback(event: APIGatewayEvent, agentId: string) {
       feedback.overallQuality) /
     5;
 
+  // Update lead with feedback data
+  await DynamoDBService.updateItem(
+    config.LEADS_TABLE_NAME,
+    { leadId: body.leadId, timestamp: ownedLead.leadTimestamp || timestamp },
+    'SET hasFeedback = :true, feedbackAt = :feedbackAt, feedbackScore = :score, feedbackAgentId = :agentId, contacted = :contacted, wouldRecommend = :recommend',
+    { 
+      ':true': true, 
+      ':feedbackAt': timestamp,
+      ':score': avgQuality,
+      ':agentId': agentId,
+      ':contacted': feedback.contacted,
+      ':recommend': feedback.wouldRecommend
+    }
+  );
+
+  // If quality is very low (avg < 2), flag for review
   if (avgQuality < 2) {
     console.log('Low quality feedback detected:', {
       leadId: body.leadId,

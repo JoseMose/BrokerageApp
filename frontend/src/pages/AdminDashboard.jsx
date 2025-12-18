@@ -386,9 +386,198 @@ function AgentsTab({ performance }) {
 }
 
 function LeadsTab() {
+  const [leads, setLeads] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all'); // all, with-feedback, without-feedback
+
+  useEffect(() => {
+    loadLeads();
+  }, []);
+
+  const loadLeads = async () => {
+    try {
+      setLoading(true);
+      const response = await adminAPI.getLeads();
+      setLeads(response.data.leads || []);
+    } catch (err) {
+      console.error('Error loading leads:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredLeads = leads.filter(lead => {
+    if (filter === 'with-feedback') return lead.hasFeedback;
+    if (filter === 'without-feedback') return !lead.hasFeedback && lead.status === 'sold';
+    return true;
+  });
+
+  const leadsWithFeedback = leads.filter(l => l.hasFeedback).length;
+  const averageFeedbackScore = leads.filter(l => l.feedbackScore)
+    .reduce((sum, l) => sum + l.feedbackScore, 0) / (leadsWithFeedback || 1);
+
+  if (loading) {
+    return <div className="text-center py-12">Loading leads...</div>;
+  }
+
   return (
-    <div className="text-center py-12 text-gray-500">
-      Lead management coming soon...
+    <div className="space-y-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <StatCard label="Total Leads" value={leads.length} />
+        <StatCard label="With Feedback" value={leadsWithFeedback} />
+        <StatCard 
+          label="Avg Feedback Score" 
+          value={averageFeedbackScore.toFixed(2) + '/5'} 
+        />
+        <StatCard 
+          label="Feedback Rate" 
+          value={((leadsWithFeedback / leads.filter(l => l.status === 'sold').length || 1) * 100).toFixed(0) + '%'} 
+        />
+      </div>
+
+      {/* Filter Buttons */}
+      <div className="flex gap-3">
+        <button
+          onClick={() => setFilter('all')}
+          className={`px-4 py-2 rounded-lg font-medium ${
+            filter === 'all'
+              ? 'bg-indigo-600 text-white'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`}
+        >
+          All Leads ({leads.length})
+        </button>
+        <button
+          onClick={() => setFilter('with-feedback')}
+          className={`px-4 py-2 rounded-lg font-medium ${
+            filter === 'with-feedback'
+              ? 'bg-indigo-600 text-white'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`}
+        >
+          With Feedback ({leadsWithFeedback})
+        </button>
+        <button
+          onClick={() => setFilter('without-feedback')}
+          className={`px-4 py-2 rounded-lg font-medium ${
+            filter === 'without-feedback'
+              ? 'bg-indigo-600 text-white'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`}
+        >
+          Awaiting Feedback ({leads.filter(l => !l.hasFeedback && l.status === 'sold').length})
+        </button>
+      </div>
+
+      {/* Leads Table */}
+      <div className="bg-white shadow rounded-lg overflow-hidden">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lead ID</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">AI Score</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Feedback</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quality Score</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contacted</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Recommend</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {filteredLeads.map((lead) => (
+              <tr key={lead.leadId} className="hover:bg-gray-50">
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500">
+                  {lead.leadId.substring(0, 12)}...
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    lead.leadType === 'buyer' 
+                      ? 'bg-blue-100 text-blue-800' 
+                      : 'bg-green-100 text-green-800'
+                  }`}>
+                    {lead.leadType}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  {lead.location?.city}, {lead.location?.state}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  <span className={`font-bold ${
+                    lead.score >= 8 ? 'text-green-600' :
+                    lead.score >= 5 ? 'text-yellow-600' :
+                    'text-red-600'
+                  }`}>
+                    {lead.score}/10
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  ${lead.price}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    lead.status === 'sold'
+                      ? 'bg-green-100 text-green-800'
+                      : lead.status === 'available'
+                      ? 'bg-blue-100 text-blue-800'
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {lead.status}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  {lead.hasFeedback ? (
+                    <span className="text-green-600 font-medium">✓ Yes</span>
+                  ) : lead.status === 'sold' ? (
+                    <span className="text-orange-600">Pending</span>
+                  ) : (
+                    <span className="text-gray-400">-</span>
+                  )}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  {lead.feedbackScore ? (
+                    <span className={`font-bold ${
+                      lead.feedbackScore >= 4 ? 'text-green-600' :
+                      lead.feedbackScore >= 3 ? 'text-yellow-600' :
+                      'text-red-600'
+                    }`}>
+                      {lead.feedbackScore.toFixed(1)}/5 ⭐
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">-</span>
+                  )}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  {lead.contacted === true ? (
+                    <span className="text-green-600">✓</span>
+                  ) : lead.contacted === false ? (
+                    <span className="text-red-600">✗</span>
+                  ) : (
+                    <span className="text-gray-400">-</span>
+                  )}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  {lead.wouldRecommend === true ? (
+                    <span className="text-green-600">✓</span>
+                  ) : lead.wouldRecommend === false ? (
+                    <span className="text-red-600">✗</span>
+                  ) : (
+                    <span className="text-gray-400">-</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {filteredLeads.length === 0 && (
+          <div className="text-center py-12 text-gray-500">
+            No leads found
+          </div>
+        )}
+      </div>
     </div>
   );
 }

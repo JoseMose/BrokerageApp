@@ -35,9 +35,45 @@ const LeadRatingModal = ({ lead, isOpen, onClose, onSubmit }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Validate at least contacted status and one rating
-    if (!formData.contacted && formData.overallQuality === 0) {
-      alert('Please indicate if you contacted this lead and provide at least an overall rating');
+    // Validate all required fields
+    if (!formData.contacted) {
+      alert('Please indicate if you have contacted this lead');
+      return;
+    }
+
+    if (formData.contacted && !formData.contactMethod) {
+      alert('Please select a contact method');
+      return;
+    }
+
+    if (formData.contacted && !formData.clientResponsiveness) {
+      alert('Please select the client\'s responsiveness level');
+      return;
+    }
+
+    // Validate all 5 rating categories are filled
+    if (formData.contactability === 0) {
+      alert('Please rate the Contactability (how easy was it to reach the client)');
+      return;
+    }
+
+    if (formData.accuracy === 0) {
+      alert('Please rate the Information Accuracy');
+      return;
+    }
+
+    if (formData.engagement === 0) {
+      alert('Please rate the Client Engagement level');
+      return;
+    }
+
+    if (formData.conversionPotential === 0) {
+      alert('Please rate the Conversion Potential');
+      return;
+    }
+
+    if (formData.overallQuality === 0) {
+      alert('Please provide an Overall Quality rating');
       return;
     }
 
