@@ -134,16 +134,12 @@ async function getAgentProfile(agentId: string) {
     }
 
     // Get ALL leads owned by this agent (claimed, purchased, or created)
-    // Query by assignedAgent instead of just transactions
+    // Query by assignedAgent (no SK needed for leads table)
     const allLeads = await DynamoDBService.scanItems(
       config.LEADS_TABLE_NAME,
-      'assignedAgent = :agentId AND #sk = :metadata',
+      'assignedAgent = :agentId',
       {
         ':agentId': agentId,
-        ':metadata': 'metadata',
-      },
-      {
-        '#sk': 'SK',
       }
     );
 
