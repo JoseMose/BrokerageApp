@@ -266,12 +266,13 @@ function PurchaseHistory() {
     // Check if feedback already exists
     try {
       const response = await feedbackAPI.getLeadFeedback(transaction.leadId);
-      if (response.data.hasFeedback) {
+      if (response?.data?.hasFeedback) {
         alert('You have already submitted feedback for this lead');
         return;
       }
     } catch (err) {
       console.error('Error checking feedback:', err);
+      // Continue to open modal even if check fails
     }
 
     setRatingModalLead({ ...lead, leadId: transaction.leadId, transactionId: transaction.transactionId });
@@ -284,17 +285,21 @@ function PurchaseHistory() {
         leadId: ratingModalLead.leadId,
       });
 
-      // Mark as rated
-      setLeadFeedback(prev => ({
-        ...prev,
-        [ratingModalLead.leadId]: true,
-      }));
+      if (response?.data) {
+        // Mark as rated
+        setLeadFeedback(prev => ({
+          ...prev,
+          [ratingModalLead.leadId]: true,
+        }));
 
-      alert('Thank you for your feedback! This helps us improve lead quality.');
-      setRatingModalLead(null);
+        alert('Thank you for your feedback! This helps us improve lead quality.');
+        setRatingModalLead(null);
+      } else {
+        throw new Error('Invalid response from server');
+      }
     } catch (err) {
       console.error('Error submitting feedback:', err);
-      alert('Failed to submit feedback. Please try again.');
+      alert(err?.response?.data?.error || 'Failed to submit feedback. Please try again.');
     }
   };
 
