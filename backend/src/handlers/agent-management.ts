@@ -918,7 +918,7 @@ async function createOwnLead(agentId: string, event: APIGatewayEvent) {
     // Create lead object
     const lead = {
       leadId,
-      SK: 'metadata',
+      timestamp: now, // Required for primary key
       leadType,
       status: 'claimed', // Directly claimed by the agent
       funnelStage: 'new_match', // Start at first funnel stage

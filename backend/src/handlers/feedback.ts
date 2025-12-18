@@ -294,7 +294,6 @@ async function getLeadFeedback(leadId: string, agentId: string) {
     config.TRANSACTIONS_TABLE_NAME,
     'leadId = :leadId AND #type = :type',
     { ':leadId': leadId, ':type': 'FEEDBACK' },
-    undefined,
     { '#type': 'type' }
   );
 
