@@ -193,20 +193,33 @@ async function submitLeadFeedback(event: APIGatewayEvent, agentId: string) {
       feedback.overallQuality) /
     5;
 
-  // Update lead with feedback data
-  await DynamoDBService.updateItem(
+  // Get the actual lead to find its timestamp
+  const leads = await DynamoDBService.scanItems(
     config.LEADS_TABLE_NAME,
-    { leadId: body.leadId, timestamp: ownedLead.leadTimestamp || timestamp },
-    'SET hasFeedback = :true, feedbackAt = :feedbackAt, feedbackScore = :score, feedbackAgentId = :agentId, contacted = :contacted, wouldRecommend = :recommend',
-    { 
-      ':true': true, 
-      ':feedbackAt': timestamp,
-      ':score': avgQuality,
-      ':agentId': agentId,
-      ':contacted': feedback.contacted,
-      ':recommend': feedback.wouldRecommend
-    }
+    'leadId = :leadId',
+    { ':leadId': body.leadId }
   );
+
+  if (leads.length > 0) {
+    const lead = leads[0];
+    // Update lead with feedback data
+    await DynamoDBService.updateItem(
+      config.LEADS_TABLE_NAME,
+      { leadId: body.leadId, timestamp: lead.timestamp },
+      'SET hasFeedback = :true, feedbackAt = :feedbackAt, feedbackScore = :score, feedbackAgentId = :agentId, contacted = :contacted, wouldRecommend = :recommend',
+      { 
+        ':true': true, 
+        ':feedbackAt': timestamp,
+        ':score': avgQuality,
+        ':agentId': agentId,
+        ':contacted': feedback.contacted,
+        ':recommend': feedback.wouldRecommend
+      }
+    );
+    console.log(`Updated lead ${body.leadId} with feedback data`);
+  } else {
+    console.error(`Lead ${body.leadId} not found in database`);
+  }
 
   // If quality is very low (avg < 2), flag for review
   if (avgQuality < 2) {
