@@ -524,9 +524,9 @@ async function passLeadToNext(currentAgentId: string, leadId: string) {
     // Get all active agents (same logic as round-robin)
     const allAgents = await DynamoDBService.scanItems(
       config.AGENTS_TABLE_NAME,
-      '#status = :active AND SK = :profile',
+      '#status = :active AND #sk = :profile',
       { ':active': 'active', ':profile': 'profile' },
-      { '#status': 'status', 'SK': 'SK' }
+      { '#status': 'status', '#sk': 'SK' }
     );
 
     if (!allAgents || allAgents.length === 0) {
