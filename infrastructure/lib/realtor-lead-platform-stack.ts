@@ -693,6 +693,17 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       }
     );
 
+    // Agent create own lead endpoint
+    const agentCreateLeadResource = agentsResource.addResource('create-lead');
+    agentCreateLeadResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(agentManagementFunction),
+      {
+        authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
     // Payment endpoints
     const purchaseResource = paymentsResource.addResource('purchase');
     purchaseResource.addMethod(
