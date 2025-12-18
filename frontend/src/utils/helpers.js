@@ -16,7 +16,10 @@ export const formatDate = (dateString) => {
 };
 
 export const formatDateTime = (dateString) => {
-  return new Date(dateString).toLocaleString('en-US', {
+  if (!dateString) return 'N/A';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return 'N/A';
+  return date.toLocaleString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',

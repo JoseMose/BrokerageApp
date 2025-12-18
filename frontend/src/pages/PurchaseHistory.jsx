@@ -636,11 +636,15 @@ function PurchaseHistory() {
                         <h5>📋 Activity Timeline</h5>
                         <div className="timeline">
                           <div className="timeline-item">
-                            <div className="timeline-icon">💰</div>
+                            <div className="timeline-icon">{transaction.source === 'agent_manual' ? '✏️' : '💰'}</div>
                             <div className="timeline-content">
-                              <div className="timeline-title">Lead Purchased</div>
+                              <div className="timeline-title">
+                                {transaction.source === 'agent_manual' ? 'Lead Created' : 'Lead Purchased'}
+                              </div>
                               <div className="timeline-date">{formatDateTime(transaction.createdAt)}</div>
-                              <div className="timeline-detail">Price: {formatCurrency(transaction.amount)}</div>
+                              <div className="timeline-detail">
+                                {transaction.source === 'agent_manual' ? 'Manually Added' : `Price: ${formatCurrency(transaction.amount)}`}
+                              </div>
                             </div>
                           </div>
                           
