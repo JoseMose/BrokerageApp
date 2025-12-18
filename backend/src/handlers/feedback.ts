@@ -70,7 +70,7 @@ export const handler = async (event: APIGatewayEvent) => {
 
     const httpMethod = event.httpMethod;
     const pathParts = event.path.split('/').filter(Boolean);
-    const agentId = RequestValidator.getAgentId(event);
+    const agentId = RequestValidator.getUserId(event);
 
     // POST /feedback/lead - Submit lead quality feedback
     if (httpMethod === 'POST' && pathParts[1] === 'lead') {

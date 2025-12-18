@@ -91,7 +91,7 @@ const LeadRatingModal = ({ lead, isOpen, onClose, onSubmit }) => {
             AI Score: {lead.score}/10 • 
             ${lead.price}
           </p>
-          <p className="lead-location">📍 {lead.location}</p>
+          <p className="lead-location">📍 {lead.location?.city}, {lead.location?.state} {lead.location?.zip}</p>
         </div>
 
         <form onSubmit={handleSubmit}>
