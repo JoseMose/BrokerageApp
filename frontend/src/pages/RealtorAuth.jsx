@@ -94,13 +94,16 @@ function RealtorAuth() {
           }}
         >
           {({ user }) => {
-            // Use effect to navigate instead of direct call to avoid setState in render
-            useEffect(() => {
-              if (user) {
-                navigate('/dashboard');
-              }
-            }, [user]);
-            
+            // Redirect authenticated users
+            if (user) {
+              navigate('/dashboard', { replace: true });
+              return (
+                <div className="loading">
+                  <div className="spinner"></div>
+                  <p>Redirecting to dashboard...</p>
+                </div>
+              );
+            }
             return null;
           }}
         </Authenticator>
