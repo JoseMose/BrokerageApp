@@ -116,6 +116,20 @@ function PurchaseHistory() {
       setBulkPackages(packages);
       setPurchases(individualLeads);
 
+      // Check feedback status for each lead
+      const feedbackStatus = {};
+      for (const { transaction } of individualLeads) {
+        try {
+          const feedbackResponse = await feedbackAPI.getLeadFeedback(transaction.leadId);
+          if (feedbackResponse?.data?.hasFeedback) {
+            feedbackStatus[transaction.leadId] = true;
+          }
+        } catch (err) {
+          // Ignore errors, lead just won't show as having feedback
+        }
+      }
+      setLeadFeedback(feedbackStatus);
+
       // Load activities from database into state
       const activitiesFromDB = {};
       individualLeads.forEach(({ transaction, lead }) => {
