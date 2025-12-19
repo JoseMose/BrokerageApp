@@ -13,8 +13,21 @@ export const handler = async (event: any) => {
   try {
     const { userAttributes, userName } = event.request;
     
-    // Only create profile for new signups (not confirmForgotPassword)
-    if (event.triggerSource !== 'PostConfirmation_ConfirmSignUp') {
+    // Handle both PostConfirmation_ConfirmSignUp and PostConfirmation_ConfirmForgotPassword
+    // Skip only password recovery
+    if (event.triggerSource === 'PostConfirmation_ConfirmForgotPassword') {
+      console.log('Skipping profile creation for password recovery');
+      return event;
+    }
+    
+    // Check if profile already exists (in case trigger runs multiple times)
+    const existingProfile = await DynamoDBService.getItem(
+      config.AGENTS_TABLE_NAME,
+      { agentId: userName, SK: 'profile' }
+    );
+    
+    if (existingProfile) {
+      console.log('✅ Profile already exists for:', userAttributes.email);
       return event;
     }
 
