@@ -470,6 +470,19 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       description: 'Handles lead feedback and client satisfaction surveys',
     });
 
+    // Pre-signup trigger - auto-confirms users from trusted email domains
+    const preSignupFunction = new lambda.Function(this, 'PreSignupFunction', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      functionName: 'RealtorPreSignup',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/dist/pre-signup')),
+      handler: 'index.handler',
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 256,
+      role: lambdaRole,
+      environment: commonEnvironment,
+      description: 'Cognito pre-signup trigger - auto-confirms trusted domains',
+    });
+
     // Post-signup trigger - creates agent profile after Cognito confirmation
     const postSignupFunction = new lambda.Function(this, 'PostSignupFunction', {
       runtime: lambda.Runtime.NODEJS_18_X,
@@ -483,7 +496,8 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       description: 'Cognito post-confirmation trigger - creates agent profile',
     });
 
-    // Add Lambda trigger to Cognito User Pool
+    // Add Lambda triggers to Cognito User Pool
+    userPool.addTrigger(cognito.UserPoolOperation.PRE_SIGN_UP, preSignupFunction);
     userPool.addTrigger(cognito.UserPoolOperation.POST_CONFIRMATION, postSignupFunction);
 
     // ============================================

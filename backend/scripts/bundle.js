@@ -24,6 +24,7 @@ const handlers = [
   // Feedback & ratings
   'feedback',
   // Cognito triggers
+  'pre-signup',
   'post-signup'
 ];
 
