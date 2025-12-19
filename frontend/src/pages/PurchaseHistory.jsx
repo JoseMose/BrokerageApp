@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { agentAPI, feedbackAPI } from '../utils/api';
 import { formatCurrency, formatDateTime, getLeadTypeLabel } from '../utils/helpers';
 import LeadRatingModal from '../components/LeadRatingModal';
+import EditLeadModal from '../components/EditLeadModal';
 import './PurchaseHistory.css';
 
 // Funnel stages
@@ -14,6 +15,7 @@ const FUNNEL_STAGES = [
   { id: 'active_client', label: 'Active Client', icon: '🤝', description: 'Officially working together' },
   { id: 'under_contract', label: 'Under Contract', icon: '📝', description: 'Binding agreement signed' },
   { id: 'closed', label: 'Closed', icon: '🏆', description: 'Deal completed!' },
+  { id: 'nurture', label: 'Nurture', icon: '🌱', description: 'Long-term follow-up' },
 ];
 
 // Format questionnaire field names to readable labels
@@ -67,6 +69,7 @@ function PurchaseHistory() {
   const [leadActivities, setLeadActivities] = useState({}); // Store activities per lead
   const [ratingModalLead, setRatingModalLead] = useState(null); // Lead being rated
   const [leadFeedback, setLeadFeedback] = useState({}); // Track which leads have feedback
+  const [editModalLead, setEditModalLead] = useState(null); // Lead being edited
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createFormData, setCreateFormData] = useState({
     name: '',
@@ -179,6 +182,47 @@ function PurchaseHistory() {
     } catch (err) {
       console.error('Error updating lead stage:', err);
       setError('Failed to update lead stage');
+    }
+  };
+
+  const handleEditLead = (lead) => {
+    setEditModalLead(lead);
+  };
+
+  const handleSaveEdit = async (updatedData) => {
+    try {
+      await agentAPI.updateLead(editModalLead.leadId, updatedData);
+      
+      // Update locally
+      setPurchases(prev => prev.map(p => 
+        p.lead?.leadId === editModalLead.leadId 
+          ? { ...p, lead: { ...p.lead, ...updatedData } }
+          : p
+      ));
+      
+      setEditModalLead(null);
+      alert('Lead updated successfully!');
+    } catch (err) {
+      console.error('Error updating lead:', err);
+      alert('Failed to update lead. Please try again.');
+    }
+  };
+
+  const handleDeleteLead = async (leadId, leadName) => {
+    if (!confirm(`Are you sure you want to delete ${leadName}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await agentAPI.deleteLead(leadId);
+      
+      // Remove from local state
+      setPurchases(prev => prev.filter(p => p.lead?.leadId !== leadId));
+      
+      alert('Lead deleted successfully!');
+    } catch (err) {
+      console.error('Error deleting lead:', err);
+      alert('Failed to delete lead. Please try again.');
     }
   };
 
@@ -591,19 +635,43 @@ function PurchaseHistory() {
                           </div>
                         </div>
                         
-                        {/* Stage Selector */}
-                        <select
-                          className="stage-selector-compact"
-                          value={lead?.funnelStage || 'new_match'}
-                          onChange={(e) => updateLeadStage(lead?.leadId, e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {FUNNEL_STAGES.map(stage => (
-                            <option key={stage.id} value={stage.id}>
-                              {stage.icon} {stage.label}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="lead-actions-group">
+                          {/* Stage Selector */}
+                          <select
+                            className="stage-selector-compact"
+                            value={lead?.funnelStage || 'new_match'}
+                            onChange={(e) => updateLeadStage(lead?.leadId, e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {FUNNEL_STAGES.map(stage => (
+                              <option key={stage.id} value={stage.id}>
+                                {stage.icon} {stage.label}
+                              </option>
+                            ))}
+                          </select>
+                          
+                          {/* Edit and Delete Buttons */}
+                          <button
+                            className="btn-icon-action btn-edit"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditLead(lead);
+                            }}
+                            title="Edit Lead"
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            className="btn-icon-action btn-delete"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteLead(lead?.leadId, lead?.contact?.name || 'this lead');
+                            }}
+                            title="Delete Lead"
+                          >
+                            🗑️
+                          </button>
+                        </div>
                       </div>
 
                       {/* Contact Information */}
@@ -804,6 +872,15 @@ function PurchaseHistory() {
         onClose={() => setRatingModalLead(null)}
         onSubmit={handleRatingSubmit}
       />
+
+      {/* Edit Lead Modal */}
+      {editModalLead && (
+        <EditLeadModal
+          lead={editModalLead}
+          onClose={() => setEditModalLead(null)}
+          onSave={handleSaveEdit}
+        />
+      )}
 
       {/* Create Lead Modal */}
       {showCreateModal && (

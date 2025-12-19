@@ -36,6 +36,8 @@ export const agentAPI = {
   passLead: (leadId) => apiClient.post(`/agents/pass-lead/${leadId}`),
   getAIRecommendations: (leads) => apiClient.post('/agents/ai-recommendations', { leads }),
   updateLeadStage: (leadId, funnelStage) => apiClient.put(`/agents/leads/${leadId}`, { funnelStage }),
+  updateLead: (leadId, data) => apiClient.put(`/agents/leads/${leadId}`, data),
+  deleteLead: (leadId) => apiClient.delete(`/agents/leads/${leadId}`),
   logLeadActivity: (leadId, activity) => apiClient.post(`/agents/leads/${leadId}/activity`, activity),
   createOwnLead: (data) => apiClient.post('/agents/create-lead', data),
 };

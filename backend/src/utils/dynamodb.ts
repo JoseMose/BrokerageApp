@@ -6,6 +6,7 @@ import {
   QueryCommand,
   UpdateCommand,
   ScanCommand,
+  DeleteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { getConfig } from './types';
 
@@ -114,5 +115,14 @@ export class DynamoDBService {
 
     const result = await docClient.send(new ScanCommand(params));
     return result.Items || [];
+  }
+
+  static async deleteItem(tableName: string, key: any): Promise<void> {
+    await docClient.send(
+      new DeleteCommand({
+        TableName: tableName,
+        Key: key,
+      })
+    );
   }
 }

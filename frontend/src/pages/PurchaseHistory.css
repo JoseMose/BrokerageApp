@@ -299,6 +299,12 @@
   align-items: flex-start;
 }
 
+.lead-actions-group {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 .stage-selector-compact {
   padding: 0.5rem 1rem;
   border: 2px solid #E5E7EB;
@@ -318,6 +324,36 @@
   outline: none;
   border-color: #3A7DFF;
   box-shadow: 0 0 0 3px rgba(58, 125, 255, 0.1);
+}
+
+.btn-icon-action {
+  padding: 0.5rem;
+  border: 2px solid #E5E7EB;
+  border-radius: 8px;
+  background: white;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+}
+
+.btn-icon-action:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.btn-edit:hover {
+  border-color: #3A7DFF;
+  background: #F0F7FF;
+}
+
+.btn-delete:hover {
+  border-color: #EF4444;
+  background: #FEF2F2;
 }
 
 /* Contact Section */

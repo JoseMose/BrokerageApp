@@ -54,13 +54,28 @@ export const handler = async (event: APIGatewayEvent) => {
       return await logLeadActivity(agentId, leadId, event);
     }
 
-    // PUT /agents/leads/{leadId} - Update lead funnel stage
+    // PUT /agents/leads/{leadId} - Update lead funnel stage or full lead data
     if (httpMethod === 'PUT' && path.includes('/agents/leads/')) {
       const leadId = event.pathParameters?.leadId;
       if (!leadId) {
         return ResponseBuilder.error('Lead ID required', 400);
       }
-      return await updateLeadFunnelStage(agentId, leadId, event);
+      const body = RequestValidator.parseBody(event);
+      // If only funnelStage, update stage. Otherwise, update full lead
+      if (body.funnelStage && Object.keys(body).length === 1) {
+        return await updateLeadFunnelStage(agentId, leadId, event);
+      } else {
+        return await updateFullLead(agentId, leadId, event);
+      }
+    }
+
+    // DELETE /agents/leads/{leadId} - Delete a lead
+    if (httpMethod === 'DELETE' && path.includes('/agents/leads/')) {
+      const leadId = event.pathParameters?.leadId;
+      if (!leadId) {
+        return ResponseBuilder.error('Lead ID required', 400);
+      }
+      return await deleteLead(agentId, leadId);
     }
 
     // GET /agents/assigned-leads - Get assigned leads
@@ -675,7 +690,8 @@ async function updateLeadFunnelStage(agentId: string, leadId: string, event: API
       'appointment_set',
       'active_client',
       'under_contract',
-      'closed'
+      'closed',
+      'nurture'
     ];
 
     if (!validStages.includes(body.funnelStage)) {
@@ -721,6 +737,126 @@ async function updateLeadFunnelStage(agentId: string, leadId: string, event: API
     });
   } catch (error) {
     console.error('Update lead funnel stage error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update full lead data (all fields)
+ */
+async function updateFullLead(agentId: string, leadId: string, event: APIGatewayEvent) {
+  try {
+    const body = RequestValidator.parseBody(event);
+
+    // Get the lead
+    const leads = await DynamoDBService.queryItems(
+      config.LEADS_TABLE_NAME,
+      'leadId = :leadId',
+      { ':leadId': leadId }
+    );
+
+    if (leads.length === 0) {
+      return ResponseBuilder.notFound('Lead not found');
+    }
+
+    const lead = leads[0];
+
+    // Verify the lead belongs to this agent
+    if (lead.claimedBy !== agentId && lead.assignedTo !== agentId && lead.assignedAgent !== agentId) {
+      return ResponseBuilder.forbidden('You do not have permission to update this lead');
+    }
+
+    // Build the update expression dynamically
+    const updateParts: string[] = [];
+    const expressionAttributeValues: any = {};
+    const expressionAttributeNames: any = {};
+
+    // Fields that can be updated
+    const updatableFields = [
+      'firstName', 'lastName', 'email', 'phone',
+      'propertyAddress', 'city', 'state', 'zipCode',
+      'leadType', 'buyingTimeframe', 'priceRange',
+      'prequalified', 'currentlyOwnHome', 'workingWithAgent',
+      'additionalInfo', 'funnelStage'
+    ];
+
+    let fieldCount = 0;
+    for (const field of updatableFields) {
+      if (body[field] !== undefined) {
+        updateParts.push(`#field${fieldCount} = :val${fieldCount}`);
+        expressionAttributeNames[`#field${fieldCount}`] = field;
+        expressionAttributeValues[`:val${fieldCount}`] = body[field];
+        fieldCount++;
+      }
+    }
+
+    if (updateParts.length === 0) {
+      return ResponseBuilder.error('No valid fields to update', 400);
+    }
+
+    // Add updatedAt timestamp
+    updateParts.push('updatedAt = :now');
+    expressionAttributeValues[':now'] = new Date().toISOString();
+
+    const updateExpression = 'SET ' + updateParts.join(', ');
+
+    await DynamoDBService.updateItem(
+      config.LEADS_TABLE_NAME,
+      { leadId: lead.leadId, timestamp: lead.timestamp },
+      updateExpression,
+      expressionAttributeValues,
+      expressionAttributeNames
+    );
+
+    console.log(`Lead ${leadId} updated by agent ${agentId}`);
+
+    return ResponseBuilder.success({
+      message: 'Lead updated successfully',
+      leadId
+    });
+  } catch (error) {
+    console.error('Update full lead error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete a lead
+ */
+async function deleteLead(agentId: string, leadId: string) {
+  try {
+    // Get the lead
+    const leads = await DynamoDBService.queryItems(
+      config.LEADS_TABLE_NAME,
+      'leadId = :leadId',
+      { ':leadId': leadId }
+    );
+
+    if (leads.length === 0) {
+      return ResponseBuilder.notFound('Lead not found');
+    }
+
+    const lead = leads[0];
+
+    // Verify the lead belongs to this agent
+    if (lead.claimedBy !== agentId && lead.assignedTo !== agentId && lead.assignedAgent !== agentId) {
+      return ResponseBuilder.forbidden('You do not have permission to delete this lead');
+    }
+
+    // Delete the lead
+    await DynamoDBService.deleteItem(
+      config.LEADS_TABLE_NAME,
+      { leadId: lead.leadId, timestamp: lead.timestamp }
+    );
+
+    console.log(`Lead ${leadId} deleted by agent ${agentId}`);
+
+    return ResponseBuilder.success({
+      message: 'Lead deleted successfully',
+      leadId
+    });
+  } catch (error) {
+    console.error('Delete lead error:', error);
     throw error;
   }
 }
