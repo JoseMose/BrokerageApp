@@ -100,6 +100,8 @@ export const adminAPI = {
   getAgents: (params) => apiClient.get('/admin', { params: { action: 'agents', ...params } }),
   getTransactions: (params) => apiClient.get('/admin', { params: { action: 'transactions', ...params } }),
   performAction: (data) => apiClient.post('/admin', data),
+  reassignLead: (leadId, newAgentId) => apiClient.put(`/admin/leads/${leadId}/reassign`, { newAgentId }),
+  restoreLead: (leadId) => apiClient.put(`/admin/leads/${leadId}/restore`),
   // Bulk packages
   createBulkPackage: (data) => apiClient.post('/admin/bulk-packages', data),
   getAllPackages: () => apiClient.get('/admin/bulk-packages'),

@@ -119,6 +119,7 @@
   transition: all 0.2s;
   background: white;
   font-family: inherit;
+  color: #111827;
 }
 
 .form-group input:hover,

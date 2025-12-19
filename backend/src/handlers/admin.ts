@@ -74,6 +74,24 @@ export const handler = async (event: APIGatewayEvent) => {
       return await handleAdminAction(event);
     }
 
+    // PUT /admin/leads/{leadId}/reassign - Reassign lead to different agent
+    if (httpMethod === 'PUT' && event.path.includes('/leads/') && event.path.includes('/reassign')) {
+      const leadId = event.pathParameters?.leadId;
+      if (!leadId) {
+        return ResponseBuilder.error('Lead ID required', 400);
+      }
+      return await reassignLead(leadId, event);
+    }
+
+    // PUT /admin/leads/{leadId}/restore - Restore deleted lead
+    if (httpMethod === 'PUT' && event.path.includes('/leads/') && event.path.includes('/restore')) {
+      const leadId = event.pathParameters?.leadId;
+      if (!leadId) {
+        return ResponseBuilder.error('Lead ID required', 400);
+      }
+      return await restoreLead(leadId);
+    }
+
     console.error('No matching admin route found');
     return ResponseBuilder.error('Invalid admin request', 400);
   } catch (error: any) {
@@ -805,5 +823,111 @@ async function getVerificationRequests() {
   } catch (error: any) {
     console.error('Get verification requests error:', error);
     return ResponseBuilder.serverError('Failed to get verification requests', error);
+  }
+}
+
+/**
+ * Reassign lead to a different agent
+ */
+async function reassignLead(leadId: string, event: APIGatewayEvent) {
+  try {
+    const body = RequestValidator.parseBody<{ newAgentId: string }>(event);
+    
+    if (!body.newAgentId) {
+      return ResponseBuilder.error('newAgentId is required', 400);
+    }
+
+    // Get the lead
+    const leads = await DynamoDBService.queryItems(
+      config.LEADS_TABLE_NAME,
+      'leadId = :leadId',
+      { ':leadId': leadId }
+    );
+
+    if (leads.length === 0) {
+      return ResponseBuilder.notFound('Lead not found');
+    }
+
+    const lead = leads[0];
+
+    // Verify the new agent exists
+    const newAgent = await DynamoDBService.getItem(config.AGENTS_TABLE_NAME, {
+      agentId: body.newAgentId,
+      SK: 'profile',
+    });
+
+    if (!newAgent) {
+      return ResponseBuilder.error('New agent not found', 404);
+    }
+
+    // Update the lead assignment
+    await DynamoDBService.updateItem(
+      config.LEADS_TABLE_NAME,
+      { leadId: lead.leadId, timestamp: lead.timestamp },
+      'SET assignedAgent = :newAgent, assignedTo = :newAgent, claimedBy = :newAgent, updatedAt = :now',
+      {
+        ':newAgent': body.newAgentId,
+        ':now': new Date().toISOString()
+      }
+    );
+
+    console.log(`Lead ${leadId} reassigned to agent ${body.newAgentId} by admin`);
+
+    return ResponseBuilder.success({
+      message: 'Lead reassigned successfully',
+      leadId,
+      newAgentId: body.newAgentId
+    });
+  } catch (error: any) {
+    console.error('Reassign lead error:', error);
+    return ResponseBuilder.serverError('Failed to reassign lead', error);
+  }
+}
+
+/**
+ * Restore a deleted lead
+ */
+async function restoreLead(leadId: string) {
+  try {
+    // Get the lead
+    const leads = await DynamoDBService.queryItems(
+      config.LEADS_TABLE_NAME,
+      'leadId = :leadId',
+      { ':leadId': leadId }
+    );
+
+    if (leads.length === 0) {
+      return ResponseBuilder.notFound('Lead not found');
+    }
+
+    const lead = leads[0];
+
+    if (lead.status !== 'deleted') {
+      return ResponseBuilder.error('Lead is not deleted', 400);
+    }
+
+    // Restore the lead
+    await DynamoDBService.updateItem(
+      config.LEADS_TABLE_NAME,
+      { leadId: lead.leadId, timestamp: lead.timestamp },
+      'SET #status = :available, restoredAt = :now REMOVE deletedAt, deletedBy',
+      {
+        ':available': 'available',
+        ':now': new Date().toISOString()
+      },
+      {
+        '#status': 'status'
+      }
+    );
+
+    console.log(`Lead ${leadId} restored by admin`);
+
+    return ResponseBuilder.success({
+      message: 'Lead restored successfully',
+      leadId
+    });
+  } catch (error: any) {
+    console.error('Restore lead error:', error);
+    return ResponseBuilder.serverError('Failed to restore lead', error);
   }
 }

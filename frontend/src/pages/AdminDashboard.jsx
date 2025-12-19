@@ -388,7 +388,7 @@ function AgentsTab({ performance }) {
 function LeadsTab() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all'); // all, with-feedback, without-feedback
+  const [filter, setFilter] = useState('all'); // all, with-feedback, without-feedback, deleted
 
   useEffect(() => {
     loadLeads();
@@ -407,9 +407,33 @@ function LeadsTab() {
     }
   };
 
+  const handleReassignLead = async (leadId, newAgentId) => {
+    try {
+      await adminAPI.reassignLead(leadId, newAgentId);
+      alert('Lead reassigned successfully!');
+      loadLeads(); // Refresh the list
+    } catch (err) {
+      console.error('Error reassigning lead:', err);
+      alert('Failed to reassign lead: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  const handleRestoreLead = async (leadId) => {
+    try {
+      await adminAPI.restoreLead(leadId);
+      alert('Lead restored successfully!');
+      loadLeads(); // Refresh the list
+    } catch (err) {
+      console.error('Error restoring lead:', err);
+      alert('Failed to restore lead: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
   const filteredLeads = leads.filter(lead => {
     if (filter === 'with-feedback') return lead.hasFeedback;
     if (filter === 'without-feedback') return !lead.hasFeedback && lead.status === 'sold';
+    if (filter === 'deleted') return lead.status === 'deleted';
+    if (filter === 'active') return lead.status !== 'deleted';
     return true;
   });
 
@@ -469,6 +493,26 @@ function LeadsTab() {
         >
           Awaiting Feedback ({leads.filter(l => !l.hasFeedback && l.status === 'sold').length})
         </button>
+        <button
+          onClick={() => setFilter('active')}
+          className={`px-4 py-2 rounded-lg font-medium ${
+            filter === 'active'
+              ? 'bg-green-600 text-white'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`}
+        >
+          Active ({leads.filter(l => l.status !== 'deleted').length})
+        </button>
+        <button
+          onClick={() => setFilter('deleted')}
+          className={`px-4 py-2 rounded-lg font-medium ${
+            filter === 'deleted'
+              ? 'bg-red-600 text-white'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`}
+        >
+          Deleted ({leads.filter(l => l.status === 'deleted').length})
+        </button>
       </div>
 
       {/* Leads Table */}
@@ -479,6 +523,7 @@ function LeadsTab() {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lead ID</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned Agent</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">AI Score</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
@@ -486,6 +531,7 @@ function LeadsTab() {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quality Score</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contacted</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Recommend</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -505,6 +551,13 @@ function LeadsTab() {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                   {lead.location?.city}, {lead.location?.state}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                  {lead.assignedAgent ? (
+                    <span className="font-mono text-xs">{lead.assignedAgent.substring(0, 12)}...</span>
+                  ) : (
+                    <span className="text-gray-400">Unassigned</span>
+                  )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
                   <span className={`font-bold ${
@@ -567,6 +620,29 @@ function LeadsTab() {
                     <span className="text-red-600">✗</span>
                   ) : (
                     <span className="text-gray-400">-</span>
+                  )}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                  <button
+                    onClick={() => {
+                      const newAgentId = prompt('Enter Agent ID to reassign this lead:');
+                      if (newAgentId) {
+                        handleReassignLead(lead.leadId, newAgentId);
+                      }
+                    }}
+                    className="text-blue-600 hover:text-blue-800 font-medium"
+                    title="Reassign Lead"
+                  >
+                    ↻ Reassign
+                  </button>
+                  {lead.status === 'deleted' && (
+                    <button
+                      onClick={() => handleRestoreLead(lead.leadId)}
+                      className="text-green-600 hover:text-green-800 font-medium"
+                      title="Restore Lead"
+                    >
+                      ↶ Restore
+                    </button>
                   )}
                 </td>
               </tr>

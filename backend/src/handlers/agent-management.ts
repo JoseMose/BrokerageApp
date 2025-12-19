@@ -150,11 +150,16 @@ async function getAgentProfile(agentId: string) {
 
     // Get ALL leads owned by this agent (claimed, purchased, or created)
     // Query by assignedAgent (no SK needed for leads table)
+    // Filter out deleted leads
     const allLeads = await DynamoDBService.scanItems(
       config.LEADS_TABLE_NAME,
-      'assignedAgent = :agentId',
+      'assignedAgent = :agentId AND (attribute_not_exists(#status) OR #status <> :deleted)',
       {
         ':agentId': agentId,
+        ':deleted': 'deleted'
+      },
+      {
+        '#status': 'status'
       }
     );
 
@@ -790,6 +795,30 @@ async function updateFullLead(agentId: string, leadId: string, event: APIGateway
       }
     }
 
+    // Also update nested contact structure
+    if (body.firstName !== undefined || body.lastName !== undefined || body.email !== undefined || body.phone !== undefined) {
+      const contactName = `${body.firstName || lead.firstName || ''} ${body.lastName || lead.lastName || ''}`.trim();
+      updateParts.push('#contact = :contact');
+      expressionAttributeNames['#contact'] = 'contact';
+      expressionAttributeValues[':contact'] = {
+        name: contactName,
+        email: body.email || lead.contact?.email || lead.email || '',
+        phone: body.phone || lead.contact?.phone || lead.phone || ''
+      };
+    }
+
+    // Also update nested location structure
+    if (body.city !== undefined || body.state !== undefined || body.zipCode !== undefined) {
+      updateParts.push('#location = :location');
+      expressionAttributeNames['#location'] = 'location';
+      expressionAttributeValues[':location'] = {
+        ...lead.location,
+        city: body.city || lead.city || lead.location?.city || '',
+        state: body.state || lead.state || lead.location?.state || '',
+        zipCode: body.zipCode || lead.zipCode || lead.location?.zipCode || ''
+      };
+    }
+
     if (updateParts.length === 0) {
       return ResponseBuilder.error('No valid fields to update', 400);
     }
@@ -821,10 +850,12 @@ async function updateFullLead(agentId: string, leadId: string, event: APIGateway
 }
 
 /**
- * Delete a lead
+ * Delete a lead (soft delete - marks as deleted)
  */
 async function deleteLead(agentId: string, leadId: string) {
   try {
+    console.log(`Delete lead request: ${leadId} by agent ${agentId}`);
+    
     // Get the lead
     const leads = await DynamoDBService.queryItems(
       config.LEADS_TABLE_NAME,
@@ -833,23 +864,35 @@ async function deleteLead(agentId: string, leadId: string) {
     );
 
     if (leads.length === 0) {
+      console.log('Lead not found');
       return ResponseBuilder.notFound('Lead not found');
     }
 
     const lead = leads[0];
+    console.log('Lead found, checking permissions...');
 
     // Verify the lead belongs to this agent
     if (lead.claimedBy !== agentId && lead.assignedTo !== agentId && lead.assignedAgent !== agentId) {
+      console.log('Permission denied');
       return ResponseBuilder.forbidden('You do not have permission to delete this lead');
     }
 
-    // Delete the lead
-    await DynamoDBService.deleteItem(
+    // Soft delete - mark as deleted instead of removing
+    await DynamoDBService.updateItem(
       config.LEADS_TABLE_NAME,
-      { leadId: lead.leadId, timestamp: lead.timestamp }
+      { leadId: lead.leadId, timestamp: lead.timestamp },
+      'SET #status = :deleted, deletedAt = :now, deletedBy = :agentId',
+      {
+        ':deleted': 'deleted',
+        ':now': new Date().toISOString(),
+        ':agentId': agentId
+      },
+      {
+        '#status': 'status'
+      }
     );
 
-    console.log(`Lead ${leadId} deleted by agent ${agentId}`);
+    console.log(`Lead ${leadId} marked as deleted by agent ${agentId}`);
 
     return ResponseBuilder.success({
       message: 'Lead deleted successfully',
@@ -857,9 +900,7 @@ async function deleteLead(agentId: string, leadId: string) {
     });
   } catch (error: any) {
     console.error('Delete lead error:', error);
-    if (error.message?.includes('permission')) {
-      return ResponseBuilder.forbidden('You do not have permission to delete this lead');
-    }
+    console.error('Error stack:', error.stack);
     return ResponseBuilder.serverError('Failed to delete lead', error);
   }
 }
