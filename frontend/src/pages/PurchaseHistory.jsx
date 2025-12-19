@@ -193,15 +193,38 @@ function PurchaseHistory() {
     try {
       await agentAPI.updateLead(editModalLead.leadId, updatedData);
       
-      // Update locally
+      // Merge first and last name for display
+      const fullName = `${updatedData.firstName} ${updatedData.lastName}`.trim();
+      
+      // Update locally with proper structure
       setPurchases(prev => prev.map(p => 
         p.lead?.leadId === editModalLead.leadId 
-          ? { ...p, lead: { ...p.lead, ...updatedData } }
+          ? { 
+              ...p, 
+              lead: { 
+                ...p.lead, 
+                ...updatedData,
+                contact: {
+                  ...p.lead.contact,
+                  name: fullName,
+                  email: updatedData.email,
+                  phone: updatedData.phone
+                },
+                location: {
+                  ...p.lead.location,
+                  city: updatedData.city,
+                  state: updatedData.state,
+                  zipCode: updatedData.zipCode
+                }
+              } 
+            }
           : p
       ));
       
       setEditModalLead(null);
       alert('Lead updated successfully!');
+      // Refresh the page data to get updated info from server
+      fetchPurchaseHistory();
     } catch (err) {
       console.error('Error updating lead:', err);
       alert('Failed to update lead. Please try again.');

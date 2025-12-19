@@ -22,22 +22,28 @@ const EditLeadModal = ({ lead, onClose, onSave }) => {
 
   useEffect(() => {
     if (lead) {
+      // Split name into first and last if it's in contact.name format
+      const fullName = lead.contact?.name || '';
+      const nameParts = fullName.split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+      
       setFormData({
-        firstName: lead.firstName || '',
-        lastName: lead.lastName || '',
-        email: lead.email || '',
-        phone: lead.phone || '',
-        propertyAddress: lead.propertyAddress || '',
-        city: lead.city || '',
-        state: lead.state || '',
-        zipCode: lead.zipCode || '',
+        firstName: lead.firstName || firstName,
+        lastName: lead.lastName || lastName,
+        email: lead.contact?.email || lead.email || '',
+        phone: lead.contact?.phone || lead.phone || '',
+        propertyAddress: lead.propertyAddress || lead.location?.address || '',
+        city: lead.location?.city || lead.city || '',
+        state: lead.location?.state || lead.state || '',
+        zipCode: lead.location?.zipCode || lead.zipCode || '',
         leadType: lead.leadType || 'buyer',
-        buyingTimeframe: lead.buyingTimeframe || '',
-        priceRange: lead.priceRange || '',
-        prequalified: lead.prequalified || '',
-        currentlyOwnHome: lead.currentlyOwnHome || '',
-        workingWithAgent: lead.workingWithAgent || '',
-        additionalInfo: lead.additionalInfo || '',
+        buyingTimeframe: lead.questionnaire?.buyingTimeframe || lead.buyingTimeframe || '',
+        priceRange: lead.questionnaire?.priceRange || lead.priceRange || '',
+        prequalified: lead.questionnaire?.prequalified || lead.prequalified || '',
+        currentlyOwnHome: lead.questionnaire?.currentlyOwnHome || lead.currentlyOwnHome || '',
+        workingWithAgent: lead.questionnaire?.workingWithAgent || lead.workingWithAgent || '',
+        additionalInfo: lead.questionnaire?.additionalInfo || lead.additionalInfo || '',
       });
     }
   }, [lead]);

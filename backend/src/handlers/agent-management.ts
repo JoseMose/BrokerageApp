@@ -855,9 +855,12 @@ async function deleteLead(agentId: string, leadId: string) {
       message: 'Lead deleted successfully',
       leadId
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Delete lead error:', error);
-    throw error;
+    if (error.message?.includes('permission')) {
+      return ResponseBuilder.forbidden('You do not have permission to delete this lead');
+    }
+    return ResponseBuilder.serverError('Failed to delete lead', error);
   }
 }
 
