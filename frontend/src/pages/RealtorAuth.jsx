@@ -25,7 +25,7 @@ function RealtorAuth() {
     <div className="realtor-auth-page">
       <div className="auth-container">
         <div className="auth-header">
-          <h1>🏠 Realtor Lead Platform</h1>
+          <h1>🏠 HomeMatch AI</h1>
           <p className="auth-subtitle">Sign in to access your dashboard</p>
         </div>
 

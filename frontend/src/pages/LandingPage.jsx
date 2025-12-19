@@ -17,7 +17,7 @@ const LandingPage = () => {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
               <span className="text-2xl font-bold bg-gradient-to-r from-primary-500 to-secondary-500 bg-clip-text text-transparent">
-                LeadConnect
+                HomeMatch AI
               </span>
             </div>
             <div className="flex items-center gap-4">
@@ -188,6 +188,107 @@ const LandingPage = () => {
           </button>
         </div>
       </section>
+
+      {/* Footer */}
+      <footer className="bg-gray-900 text-gray-300">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+            {/* Company Info */}
+            <div className="col-span-1">
+              <div className="flex items-center mb-4">
+                <span className="text-2xl font-bold text-white">
+                  HomeMatch AI
+                </span>
+              </div>
+              <p className="text-sm text-gray-400">
+                Connecting home buyers and sellers with the perfect real estate agents through AI-powered matching.
+              </p>
+            </div>
+
+            {/* Legal */}
+            <div>
+              <h3 className="text-white font-semibold mb-4">Legal</h3>
+              <ul className="space-y-2 text-sm">
+                <li>
+                  <a href="/privacy-policy" className="hover:text-white transition-colors">
+                    Privacy Policy
+                  </a>
+                </li>
+                <li>
+                  <a href="/terms-of-service" className="hover:text-white transition-colors">
+                    Terms of Service
+                  </a>
+                </li>
+                <li>
+                  <a href="/cookie-policy" className="hover:text-white transition-colors">
+                    Cookie Policy
+                  </a>
+                </li>
+              </ul>
+            </div>
+
+            {/* Support */}
+            <div>
+              <h3 className="text-white font-semibold mb-4">Support</h3>
+              <ul className="space-y-2 text-sm">
+                <li>
+                  <a href="/contact" className="hover:text-white transition-colors">
+                    Contact Us
+                  </a>
+                </li>
+                <li>
+                  <a href="/faq" className="hover:text-white transition-colors">
+                    FAQ
+                  </a>
+                </li>
+                <li>
+                  <a href="/help" className="hover:text-white transition-colors">
+                    Help Center
+                  </a>
+                </li>
+              </ul>
+            </div>
+
+            {/* For Realtors */}
+            <div>
+              <h3 className="text-white font-semibold mb-4">For Realtors</h3>
+              <ul className="space-y-2 text-sm">
+                <li>
+                  <a href="/realtor-login" className="hover:text-white transition-colors">
+                    Realtor Login
+                  </a>
+                </li>
+                <li>
+                  <a href="/realtor-signup" className="hover:text-white transition-colors">
+                    Join Our Network
+                  </a>
+                </li>
+                <li>
+                  <a href="/how-it-works" className="hover:text-white transition-colors">
+                    How It Works
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Bottom Bar */}
+          <div className="border-t border-gray-800 pt-8 flex flex-col md:flex-row justify-between items-center text-sm text-gray-400">
+            <p>© {new Date().getFullYear()} HomeMatch AI. All rights reserved.</p>
+            <div className="flex gap-6 mt-4 md:mt-0">
+              <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                Facebook
+              </a>
+              <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                Twitter
+              </a>
+              <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                LinkedIn
+              </a>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 };

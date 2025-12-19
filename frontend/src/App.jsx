@@ -17,6 +17,13 @@ import AdminDashboard from './pages/AdminDashboard';
 import LandingPage from './pages/LandingPage';
 import RealtorAuth from './pages/RealtorAuth';
 import BulkLeads from './pages/BulkLeads';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import TermsOfService from './pages/TermsOfService';
+import CookiePolicy from './pages/CookiePolicy';
+import Contact from './pages/Contact';
+import FAQ from './pages/FAQ';
+import HelpCenter from './pages/HelpCenter';
+import HowItWorks from './pages/HowItWorks';
 
 // Initialize Stripe
 const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
@@ -61,6 +68,14 @@ function App() {
         {/* Public Routes */}
         <Route path="/" element={<LandingPage />} />
         <Route path="/realtor-login" element={<RealtorAuth />} />
+        <Route path="/realtor-signup" element={<RealtorAuth />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+        <Route path="/terms-of-service" element={<TermsOfService />} />
+        <Route path="/cookie-policy" element={<CookiePolicy />} />
+        <Route path="/contact" element={<Contact />} />
+        <Route path="/faq" element={<FAQ />} />
+        <Route path="/help" element={<HelpCenter />} />
+        <Route path="/how-it-works" element={<HowItWorks />} />
 
         {/* Protected Routes */}
         <Route

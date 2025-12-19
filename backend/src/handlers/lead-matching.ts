@@ -18,7 +18,7 @@ export const handler = async (event: any) => {
 
     const { leadId, leadType, score, location, price } = event;
 
-    // Get all active agents
+    // Get all active agents (excluding admins)
     const agents = await DynamoDBService.scanItems(
       config.AGENTS_TABLE_NAME,
       '#status = :status AND SK = :sk',
@@ -31,8 +31,13 @@ export const handler = async (event: any) => {
       }
     );
 
-    if (agents.length === 0) {
-      console.log('No active agents found');
+    // Filter out admin accounts from round robin
+    const nonAdminAgents = agents.filter((agent: Agent) => 
+      !agent.email?.includes('admin@') && !agent.email?.includes('support@')
+    );
+
+    if (nonAdminAgents.length === 0) {
+      console.log('No active non-admin agents found');
       return {
         leadId,
         matchedAgents: [],
@@ -42,7 +47,7 @@ export const handler = async (event: any) => {
     }
 
     // Filter agents by preferences and capacity
-    const eligibleAgents = agents.filter((agent: Agent) => {
+    const eligibleAgents = nonAdminAgents.filter((agent: Agent) => {
       // Check if agent is online
       if (agent.roundRobin && !agent.roundRobin.isOnline) {
         return false;

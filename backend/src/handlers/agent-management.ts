@@ -150,18 +150,16 @@ async function getAgentProfile(agentId: string) {
 
     // Get ALL leads owned by this agent (claimed, purchased, or created)
     // Query by assignedAgent (no SK needed for leads table)
-    // Filter out deleted leads
-    const allLeads = await DynamoDBService.scanItems(
+    const allLeadsRaw = await DynamoDBService.scanItems(
       config.LEADS_TABLE_NAME,
-      'assignedAgent = :agentId AND (attribute_not_exists(#status) OR #status <> :deleted)',
+      'assignedAgent = :agentId',
       {
         ':agentId': agentId,
-        ':deleted': 'deleted'
-      },
-      {
-        '#status': 'status'
       }
     );
+    
+    // Filter out deleted leads in JavaScript
+    const allLeads = allLeadsRaw.filter(lead => lead.status !== 'deleted');
 
     console.log(`Found ${allLeads.length} total leads for agent ${agentId}`);
 
@@ -853,8 +851,8 @@ async function updateFullLead(agentId: string, leadId: string, event: APIGateway
  * Delete a lead (soft delete - marks as deleted)
  */
 async function deleteLead(agentId: string, leadId: string) {
+  console.log(`Delete lead request: ${leadId} by agent ${agentId}`);
   try {
-    console.log(`Delete lead request: ${leadId} by agent ${agentId}`);
     
     // Get the lead
     const leads = await DynamoDBService.queryItems(

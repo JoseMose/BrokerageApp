@@ -74,18 +74,18 @@ export const handler = async (event: APIGatewayEvent) => {
       return await handleAdminAction(event);
     }
 
-    // PUT /admin/leads/{leadId}/reassign - Reassign lead to different agent
-    if (httpMethod === 'PUT' && event.path.includes('/leads/') && event.path.includes('/reassign')) {
-      const leadId = event.pathParameters?.leadId;
+    // PUT /admin?action=reassign-lead - Reassign lead to different agent
+    if (httpMethod === 'PUT' && queryParams.action === 'reassign-lead') {
+      const leadId = queryParams.leadId;
       if (!leadId) {
         return ResponseBuilder.error('Lead ID required', 400);
       }
       return await reassignLead(leadId, event);
     }
 
-    // PUT /admin/leads/{leadId}/restore - Restore deleted lead
-    if (httpMethod === 'PUT' && event.path.includes('/leads/') && event.path.includes('/restore')) {
-      const leadId = event.pathParameters?.leadId;
+    // PUT /admin?action=restore-lead - Restore deleted lead
+    if (httpMethod === 'PUT' && queryParams.action === 'restore-lead') {
+      const leadId = queryParams.leadId;
       if (!leadId) {
         return ResponseBuilder.error('Lead ID required', 400);
       }

@@ -111,7 +111,7 @@ export default function AdminDashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+              <h1 className="text-2xl font-bold text-gray-900">HomeMatch AI Admin</h1>
               <p className="text-sm text-gray-500 mt-1">Platform Administration & Analytics</p>
             </div>
             <div className="flex items-center space-x-4">
@@ -160,7 +160,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className={activeTab === 'leads' ? 'w-full px-4 sm:px-6 lg:px-8 py-8' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'}>
         {activeTab === 'overview' && <OverviewTab data={dashboardData} analytics={analyticsData} />}
         {activeTab === 'verification' && <VerificationTab requests={verificationRequests} onUpdate={fetchData} />}
         {activeTab === 'analytics' && <AnalyticsTab data={analyticsData} />}
@@ -387,11 +387,15 @@ function AgentsTab({ performance }) {
 
 function LeadsTab() {
   const [leads, setLeads] = useState([]);
+  const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // all, with-feedback, without-feedback, deleted
+  const [reassignModal, setReassignModal] = useState(null); // { leadId, currentAgentId }
+  const [selectedAgentId, setSelectedAgentId] = useState('');
 
   useEffect(() => {
     loadLeads();
+    loadAgents();
   }, []);
 
   const loadLeads = async () => {
@@ -407,10 +411,32 @@ function LeadsTab() {
     }
   };
 
-  const handleReassignLead = async (leadId, newAgentId) => {
+  const loadAgents = async () => {
     try {
-      await adminAPI.reassignLead(leadId, newAgentId);
+      const response = await adminAPI.getAgents();
+      const agentsList = response.data.data?.agents || [];
+      setAgents(agentsList);
+    } catch (err) {
+      console.error('Error loading agents:', err);
+    }
+  };
+
+  const getAgentName = (agentId) => {
+    if (!agentId) return 'Unassigned';
+    const agent = agents.find(a => a.agentId === agentId);
+    return agent?.name || `Agent ${agentId.substring(0, 8)}...`;
+  };
+
+  const handleReassignLead = async () => {
+    if (!selectedAgentId) {
+      alert('Please select an agent');
+      return;
+    }
+    try {
+      await adminAPI.reassignLead(reassignModal.leadId, selectedAgentId);
       alert('Lead reassigned successfully!');
+      setReassignModal(null);
+      setSelectedAgentId('');
       loadLeads(); // Refresh the list
     } catch (err) {
       console.error('Error reassigning lead:', err);
@@ -517,7 +543,8 @@ function LeadsTab() {
 
       {/* Leads Table */}
       <div className="bg-white shadow rounded-lg overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
+        <div className="overflow-x-auto">
+          <table className="w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lead ID</th>
@@ -531,12 +558,13 @@ function LeadsTab() {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quality Score</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contacted</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Recommend</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Recommended Action</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {filteredLeads.map((lead) => (
-              <tr key={lead.leadId} className="hover:bg-gray-50">
+            {filteredLeads.map((lead, index) => (
+              <tr key={`${lead.leadId}-${lead.timestamp || index}`} className="hover:bg-gray-50">
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500">
                   {lead.leadId.substring(0, 12)}...
                 </td>
@@ -552,12 +580,8 @@ function LeadsTab() {
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                   {lead.location?.city}, {lead.location?.state}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                  {lead.assignedAgent ? (
-                    <span className="font-mono text-xs">{lead.assignedAgent.substring(0, 12)}...</span>
-                  ) : (
-                    <span className="text-gray-400">Unassigned</span>
-                  )}
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  {getAgentName(lead.assignedAgent)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
                   <span className={`font-bold ${
@@ -622,13 +646,24 @@ function LeadsTab() {
                     <span className="text-gray-400">-</span>
                   )}
                 </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  {lead.recommendedAction ? (
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                      lead.recommendedAction === 'keep' ? 'bg-green-100 text-green-800' :
+                      lead.recommendedAction === 'remove' ? 'bg-red-100 text-red-800' :
+                      'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {lead.recommendedAction}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">-</span>
+                  )}
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                   <button
                     onClick={() => {
-                      const newAgentId = prompt('Enter Agent ID to reassign this lead:');
-                      if (newAgentId) {
-                        handleReassignLead(lead.leadId, newAgentId);
-                      }
+                      setReassignModal({ leadId: lead.leadId, currentAgentId: lead.assignedAgent });
+                      setSelectedAgentId(lead.assignedAgent || '');
                     }}
                     className="text-blue-600 hover:text-blue-800 font-medium"
                     title="Reassign Lead"
@@ -649,12 +684,67 @@ function LeadsTab() {
             ))}
           </tbody>
         </table>
+        </div>
         {filteredLeads.length === 0 && (
           <div className="text-center py-12 text-gray-500">
             No leads found
           </div>
         )}
       </div>
+
+      {/* Reassign Modal */}
+      {reassignModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">Reassign Lead</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Select an agent to reassign this lead to:
+            </p>
+            
+            {agents.length === 0 && (
+              <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+                Loading agents... If this persists, check the console for errors.
+              </div>
+            )}
+            
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Agent ({agents.length} available)
+              </label>
+              <select
+                value={selectedAgentId}
+                onChange={(e) => setSelectedAgentId(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select an agent...</option>
+                {agents.map(agent => (
+                  <option key={agent.agentId} value={agent.agentId}>
+                    {agent.name} ({agent.email})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setReassignModal(null);
+                  setSelectedAgentId('');
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleReassignLead}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
+              >
+                Reassign
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

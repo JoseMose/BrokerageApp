@@ -18,7 +18,7 @@ function Navigation({ user, signOut }) {
     <nav className="navigation">
       <div className="container nav-container">
         <Link to="/dashboard" className="nav-brand">
-          <h2>🏠 Realtor Lead Platform</h2>
+          <h2>🏠 HomeMatch AI</h2>
         </Link>
         
         <div className="nav-menu">
