@@ -547,7 +547,7 @@ function LeadsTab() {
           <table className="w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lead ID</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lead Name</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned Agent</th>
@@ -565,8 +565,9 @@ function LeadsTab() {
           <tbody className="bg-white divide-y divide-gray-200">
             {filteredLeads.map((lead, index) => (
               <tr key={`${lead.leadId}-${lead.timestamp || index}`} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500">
-                  {lead.leadId.substring(0, 12)}...
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <div className="font-medium">{lead.contact?.name || 'Unknown'}</div>
+                  <div className="text-xs text-gray-500">{lead.contact?.email || ''}</div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${

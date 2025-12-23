@@ -4,9 +4,10 @@ import DifferenceSection from '../components/DifferenceSection';
 
 const LandingPage = () => {
   const [showForm, setShowForm] = useState(false);
+  const [leadType, setLeadType] = useState(null);
 
-  if (showForm) {
-    return <LeadForm />;
+  if (showForm && leadType) {
+    return <LeadForm initialLeadType={leadType} />;
   }
 
   return (
@@ -27,12 +28,6 @@ const LandingPage = () => {
               >
                 Realtor Sign In
               </a>
-              <button
-                onClick={() => setShowForm(true)}
-                className="btn btn-primary"
-              >
-                Get Started
-              </button>
             </div>
           </div>
         </div>
@@ -54,40 +49,77 @@ const LandingPage = () => {
               </span>
             </h1>
 
-            <p className="text-xl md:text-2xl text-gray-600 mb-12 max-w-3xl mx-auto">
+            <p className="text-xl md:text-2xl text-gray-600 mb-16 max-w-3xl mx-auto">
               Our AI system matches you with an agent based on{' '}
               <strong className="text-gray-900">readiness, fairness, and fit</strong>
               {' '}— not who pays the most.
             </p>
 
-            <button
-              onClick={() => setShowForm(true)}
-              className="group inline-flex items-center gap-3 bg-gradient-to-r from-primary-500 to-secondary-500 hover:from-primary-600 hover:to-secondary-600 text-white font-bold text-lg px-10 py-5 rounded-2xl transition-all duration-300 transform hover:scale-105 shadow-2xl"
-            >
-              <span>Get Started</span>
-              <svg className="w-6 h-6 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-              </svg>
-            </button>
+            {/* Inline First Form Step - Buy/Sell Selection */}
+            <div className="max-w-2xl mx-auto">
+              {/* Trust Reassurance */}
+              <div className="text-center mb-8 animate-fade-in">
+                <p className="text-base text-gray-600 font-medium">
+                  Free to use. You'll only be matched with ONE local realtor — no spam, no pressure.
+                </p>
+              </div>
 
-            <div className="mt-12 flex flex-wrap justify-center gap-8 text-sm text-gray-600">
-              <div className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
-                <span>100% Free for Buyers & Sellers</span>
+              {/* First Question */}
+              <div className="text-center mb-8">
+                <h2 className="text-3xl md:text-4xl font-bold text-navy mb-2">
+                  What are you looking to do today?
+                </h2>
               </div>
-              <div className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
-                <span>No Obligation</span>
+
+              {/* Buy/Sell Buttons */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+                <button
+                  onClick={() => {
+                    setLeadType('buyer');
+                    setShowForm(true);
+                  }}
+                  className="p-10 rounded-2xl border-2 border-gray-300 bg-white hover:border-electric hover:bg-electric-50 hover:shadow-xl hover:scale-102 transition-all duration-300 animate-fade-in"
+                  style={{animationDelay: '200ms'}}
+                >
+                  <div className="text-6xl mb-4">🏠</div>
+                  <h3 className="text-2xl font-bold text-navy mb-2">Buy a home</h3>
+                  <p className="text-sm text-gray-600">Find your dream property</p>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setLeadType('seller');
+                    setShowForm(true);
+                  }}
+                  className="p-10 rounded-2xl border-2 border-gray-300 bg-white hover:border-electric hover:bg-electric-50 hover:shadow-xl hover:scale-102 transition-all duration-300 animate-fade-in"
+                  style={{animationDelay: '300ms'}}
+                >
+                  <div className="text-6xl mb-4">🏡</div>
+                  <h3 className="text-2xl font-bold text-navy mb-2">Sell a home</h3>
+                  <p className="text-sm text-gray-600">Get the best value</p>
+                </button>
               </div>
-              <div className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
-                <span><strong>All Realtors Verified</strong></span>
+
+              {/* Trust Indicators Below Buttons */}
+              <div className="flex flex-wrap justify-center gap-8 text-sm text-gray-600 animate-fade-in" style={{animationDelay: '400ms'}}>
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <span>100% Free</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <span>No Obligation</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <span><strong>Verified Realtors</strong></span>
+                </div>
               </div>
             </div>
           </div>
