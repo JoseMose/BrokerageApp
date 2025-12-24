@@ -75,15 +75,6 @@ const LandingPage = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
                 <button
                   onClick={() => {
-                    // Track with Meta Pixel
-                    if (window.fbq) {
-                      window.fbq('track', 'Lead', {
-                        content_name: 'Buy Home Intent',
-                        content_category: 'buyer',
-                        value: 0,
-                        currency: 'USD'
-                      });
-                    }
                     setLeadType('buyer');
                     setShowForm(true);
                   }}
@@ -97,15 +88,6 @@ const LandingPage = () => {
 
                 <button
                   onClick={() => {
-                    // Track with Meta Pixel
-                    if (window.fbq) {
-                      window.fbq('track', 'Lead', {
-                        content_name: 'Sell Home Intent',
-                        content_category: 'seller',
-                        value: 0,
-                        currency: 'USD'
-                      });
-                    }
                     setLeadType('seller');
                     setShowForm(true);
                   }}

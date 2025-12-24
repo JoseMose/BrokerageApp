@@ -360,6 +360,16 @@ const LeadForm = ({ initialLeadType = null }) => {
       const response = await submitLead(payload);
       
       if (response.success) {
+        // Track successful lead submission with Meta Pixel
+        if (window.fbq) {
+          window.fbq('track', 'Lead', {
+            content_name: formData.leadType === 'buyer' ? 'Buy Home Lead' : 'Sell Home Lead',
+            content_category: formData.leadType,
+            value: response.data?.price || 0,
+            currency: 'USD'
+          });
+        }
+        
         // Store the response data including score
         setFormData(prev => ({
           ...prev,
