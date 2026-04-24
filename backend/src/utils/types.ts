@@ -211,36 +211,86 @@ export interface StepFunctionEvent {
   };
 }
 
-// Configuration
+export interface MasterLead {
+  id: string;
+  ownerName: string;
+  propertyAddress: string;
+  leadType: 'expired' | 'fsbo' | 'pre_foreclosure';
+  phone?: string;
+  email?: string;
+  notes?: string;
+  status: 'active' | 'archived';
+  addedBy: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface AgentFunnelEntry {
+  agentId: string;
+  id: string;
+  masterId: string;
+  ownerName: string;
+  propertyAddress: string;
+  leadType: 'expired' | 'fsbo' | 'pre_foreclosure';
+  phone?: string;
+  email?: string;
+  stage: 'new_lead' | 'contacted' | 'appt_set' | 'under_contract' | 'closed';
+  notes?: string;
+  lastContactDate?: string | null;
+  addedAt: string;
+  updatedAt: string;
+}
+
+// Configuration — IBM Cloud stack
 
 export interface Config {
   LEADS_TABLE_NAME: string;
   AGENTS_TABLE_NAME: string;
   TRANSACTIONS_TABLE_NAME: string;
-  PLACE_INDEX_NAME: string;
-  ROUTE_CALCULATOR_NAME: string;
-  AWS_REGION: string;
-  BEDROCK_MODEL_ID: string;
-  BEDROCK_FALLBACK_MODEL_ID: string;
+  MASTER_LEADS_TABLE_NAME: string;
+  AGENT_FUNNEL_TABLE_NAME: string;
+  // IBM Cloudant
+  CLOUDANT_URL: string;
+  CLOUDANT_API_KEY: string;
+  // IBM App ID
+  APP_ID_TENANT_ID: string;
+  APP_ID_REGION: string;
+  // IBM WatsonX AI
+  WATSONX_API_KEY: string;
+  WATSONX_PROJECT_ID: string;
+  WATSONX_REGION: string;
+  WATSONX_MODEL_ID: string;
+  // HERE Maps
+  HERE_API_KEY: string;
+  // Stripe (unchanged)
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
+  // App
   PRICE_PER_POINT: number;
   DEFAULT_RADIUS_MILES: number;
   LEAD_EXPIRY_HOURS: number;
+  FRONTEND_URL: string;
 }
 
 export const getConfig = (): Config => ({
-  LEADS_TABLE_NAME: process.env.LEADS_TABLE_NAME || 'RealtorLeads',
-  AGENTS_TABLE_NAME: process.env.AGENTS_TABLE_NAME || 'RealtorAgents',
-  TRANSACTIONS_TABLE_NAME: process.env.TRANSACTIONS_TABLE_NAME || 'RealtorTransactions',
-  PLACE_INDEX_NAME: process.env.PLACE_INDEX_NAME || 'RealtorPlaceIndex',
-  ROUTE_CALCULATOR_NAME: process.env.ROUTE_CALCULATOR_NAME || 'RealtorRouteCalculator',
-  AWS_REGION: process.env.AWS_REGION || 'us-east-1',
-  BEDROCK_MODEL_ID: process.env.BEDROCK_MODEL_ID || 'amazon.nova-micro-v1:0',
-  BEDROCK_FALLBACK_MODEL_ID: process.env.BEDROCK_FALLBACK_MODEL_ID || 'anthropic.claude-3-sonnet-20240229-v1:0',
-  STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
-  STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
-  PRICE_PER_POINT: parseInt(process.env.PRICE_PER_POINT || '10'),
-  DEFAULT_RADIUS_MILES: parseInt(process.env.DEFAULT_RADIUS_MILES || '15'),
-  LEAD_EXPIRY_HOURS: parseInt(process.env.LEAD_EXPIRY_HOURS || '72'),
+  LEADS_TABLE_NAME:         process.env.LEADS_TABLE_NAME         || 'RealtorLeads',
+  AGENTS_TABLE_NAME:        process.env.AGENTS_TABLE_NAME        || 'RealtorAgents',
+  TRANSACTIONS_TABLE_NAME:  process.env.TRANSACTIONS_TABLE_NAME  || 'RealtorTransactions',
+  MASTER_LEADS_TABLE_NAME:  process.env.MASTER_LEADS_TABLE_NAME  || 'MasterLeads',
+  AGENT_FUNNEL_TABLE_NAME:  process.env.AGENT_FUNNEL_TABLE_NAME  || 'AgentFunnel',
+  CLOUDANT_URL:             process.env.CLOUDANT_URL             || '',
+  CLOUDANT_API_KEY:         process.env.CLOUDANT_API_KEY         || '',
+  APP_ID_TENANT_ID:         process.env.APP_ID_TENANT_ID         || '',
+  APP_ID_REGION:            process.env.APP_ID_REGION            || 'us-south',
+  WATSONX_API_KEY:          process.env.WATSONX_API_KEY          || '',
+  WATSONX_PROJECT_ID:       process.env.WATSONX_PROJECT_ID       || '',
+  WATSONX_REGION:           process.env.WATSONX_REGION           || 'us-south',
+  WATSONX_MODEL_ID:         process.env.WATSONX_MODEL_ID         || 'ibm/granite-13b-instruct-v2',
+  HERE_API_KEY:             process.env.HERE_API_KEY             || '',
+  STRIPE_SECRET_KEY:        process.env.STRIPE_SECRET_KEY        || '',
+  STRIPE_WEBHOOK_SECRET:    process.env.STRIPE_WEBHOOK_SECRET    || '',
+  PRICE_PER_POINT:          parseInt(process.env.PRICE_PER_POINT    || '10'),
+  DEFAULT_RADIUS_MILES:     parseInt(process.env.DEFAULT_RADIUS_MILES || '15'),
+  LEAD_EXPIRY_HOURS:        parseInt(process.env.LEAD_EXPIRY_HOURS   || '72'),
+  FRONTEND_URL:             process.env.FRONTEND_URL             || 'https://jesfandiari.com',
 });

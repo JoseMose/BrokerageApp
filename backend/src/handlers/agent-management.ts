@@ -684,17 +684,22 @@ async function updateLeadFunnelStage(agentId: string, leadId: string, event: API
       return ResponseBuilder.error('funnelStage is required', 400);
     }
 
-    // Valid funnel stages
+    // Valid funnel stages (legacy + new prospecting stages)
     const validStages = [
+      // New prospecting pipeline
+      'new_lead',
+      'contacted',
+      'appt_set',
+      'under_contract',
+      'closed',
+      // Legacy stages (kept for backward compatibility)
       'new_match',
       'first_outreach',
       'connected',
       'qualified',
       'appointment_set',
       'active_client',
-      'under_contract',
-      'closed',
-      'nurture'
+      'nurture',
     ];
 
     if (!validStages.includes(body.funnelStage)) {
@@ -1065,15 +1070,26 @@ async function updateAgentCapacity(agentId: string, event: APIGatewayEvent) {
 async function createOwnLead(agentId: string, event: APIGatewayEvent) {
   try {
     const body = JSON.parse(event.body || '{}');
-    const { contact, leadType, location, budget, notes, questionnaire } = body;
+    const {
+      contact, leadType, location, budget, notes, questionnaire,
+      // New prospecting lead fields
+      ownerName, propertyAddress, phone, email, stage,
+    } = body;
+
+    // Resolve fields — support both old format (contact.name) and new format (ownerName)
+    const resolvedName    = ownerName    || contact?.name  || '';
+    const resolvedPhone   = phone        || contact?.phone || '';
+    const resolvedEmail   = email        || contact?.email || '';
+    const resolvedAddress = propertyAddress || location?.address || '';
 
     // Validate required fields
-    if (!contact?.name || !contact?.email || !contact?.phone) {
-      return ResponseBuilder.error('Name, email, and phone are required', 400);
+    if (!resolvedName || !resolvedPhone) {
+      return ResponseBuilder.error('Owner name and phone are required', 400);
     }
 
-    if (!leadType || !['buyer', 'seller'].includes(leadType)) {
-      return ResponseBuilder.error('Valid lead type (buyer/seller) is required', 400);
+    const VALID_LEAD_TYPES = ['buyer', 'seller', 'expired', 'fsbo', 'pre_foreclosure'];
+    if (!leadType || !VALID_LEAD_TYPES.includes(leadType)) {
+      return ResponseBuilder.error('Valid lead type is required', 400);
     }
 
     // Get agent profile to verify they're verified
@@ -1093,13 +1109,16 @@ async function createOwnLead(agentId: string, event: APIGatewayEvent) {
     // Extract budget from questionnaire if provided
     const leadBudget = questionnaire?.budget || budget || '';
 
+    // Determine starting funnel stage
+    const resolvedStage = stage || 'new_lead';
+
     // Create lead object
     const lead = {
       leadId,
       timestamp: now, // Required for primary key
       leadType,
       status: 'claimed', // Directly claimed by the agent
-      funnelStage: 'new_match', // Start at first funnel stage
+      funnelStage: resolvedStage,
       assignedAgent: agentId,
       claimedAt: now,
       createdAt: now,
@@ -1108,11 +1127,14 @@ async function createOwnLead(agentId: string, event: APIGatewayEvent) {
       score: 5, // Default score for manually created leads
       price: 0, // No cost for self-generated leads
       contact: {
-        name: contact.name,
-        email: contact.email,
-        phone: contact.phone,
+        name: resolvedName,
+        email: resolvedEmail,
+        phone: resolvedPhone,
       },
-      location: location || {},
+      location: {
+        ...(location || {}),
+        address: resolvedAddress,
+      },
       responses: {
         budget: leadBudget,
       },

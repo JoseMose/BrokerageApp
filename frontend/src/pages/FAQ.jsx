@@ -46,16 +46,8 @@ const FAQ = () => {
           a: "Our AI evaluates multiple factors including buyer readiness, property specifics, timeline, financing status, and more to provide a quality score for each lead. Higher scores indicate more qualified, ready-to-act clients."
         },
         {
-          q: "Can I choose which leads to purchase?",
-          a: "Yes! You can browse available leads in our marketplace and choose which ones to claim. You only pay for leads you actually want."
-        },
-        {
           q: "What if a lead doesn't convert?",
-          a: "We stand behind our lead quality. If a lead is unresponsive or the information is inaccurate, you can dispute it within 48 hours for a credit or refund."
-        },
-        {
-          q: "How many agents does each lead go to?",
-          a: "Leads are matched with 1-3 qualified agents based on proximity, specialization, and availability. We believe in quality over quantity."
+          a: "We focus on lead quality. If a lead's contact information is inaccurate or unresponsive, reach out to your broker for support."
         }
       ]
     },

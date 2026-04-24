@@ -25,13 +25,17 @@ function RealtorAuth() {
     <div className="realtor-auth-page">
       <div className="auth-container">
         <div className="auth-header">
-          <h1>🏠 HomeMatch AI</h1>
-          <p className="auth-subtitle">Sign in to access your dashboard</p>
+          <h1>Joseph Esfandiari Real Estate</h1>
+          <p className="auth-subtitle">Agent portal — sign in to access your dashboard</p>
         </div>
 
-        <div className="auth-info" style={{ marginBottom: '20px', padding: '16px', backgroundColor: '#f0f9ff', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
-          <p style={{ margin: 0, color: '#1e40af', fontSize: '14px' }}>
-            ℹ️ Your application will be reviewed by an administrator before access is granted.
+        <div style={{
+          marginBottom: '1.5rem', padding: '0.875rem 1rem',
+          background: 'rgba(201,168,76,0.07)', borderRadius: '12px',
+          border: '1px solid rgba(201,168,76,0.18)',
+        }}>
+          <p style={{ margin: 0, color: '#C9A84C', fontSize: '0.82rem', lineHeight: 1.6 }}>
+            Applications are reviewed by an administrator before access is granted.
           </p>
         </div>
 

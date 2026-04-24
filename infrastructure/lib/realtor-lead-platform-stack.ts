@@ -89,6 +89,33 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // Master Leads Table (shared pool — never consumed, browsed by all agents)
+    const masterLeadsTable = new dynamodb.Table(this, 'MasterLeadsTable', {
+      tableName: 'MasterLeads',
+      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      pointInTimeRecovery: true,
+    });
+
+    // Agent Funnel Table (agent's private copy of master leads they are working)
+    const agentFunnelTable = new dynamodb.Table(this, 'AgentFunnelTable', {
+      tableName: 'AgentFunnel',
+      partitionKey: { name: 'agentId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      pointInTimeRecovery: true,
+    });
+
+    // GSI to detect duplicates: "does this agent already have masterId ml-001?"
+    agentFunnelTable.addGlobalSecondaryIndex({
+      indexName: 'MasterIdIndex',
+      partitionKey: { name: 'masterId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'agentId', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // ============================================
     // COGNITO USER POOLS
     // ============================================
@@ -109,7 +136,7 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
           mutable: false,
         },
         fullname: {
-          required: false,  // Changed to false - we collect name during profile setup
+          required: true,
           mutable: true,
         },
         phoneNumber: {
@@ -120,7 +147,7 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       customAttributes: {
         role: new cognito.StringAttribute({ mutable: true }), // agent or admin
         licenseId: new cognito.StringAttribute({ mutable: true }),
-        licenseState: new cognito.StringAttribute({ mutable: true }),
+        // licenseState exists in Cognito (added directly) — omitting here to avoid CloudFormation drift conflict
         brokerage: new cognito.StringAttribute({ mutable: true }),
       },
       passwordPolicy: {
@@ -303,6 +330,8 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
     leadsTable.grantReadWriteData(lambdaRole);
     agentsTable.grantReadWriteData(lambdaRole);
     transactionsTable.grantReadWriteData(lambdaRole);
+    masterLeadsTable.grantReadWriteData(lambdaRole);
+    agentFunnelTable.grantReadWriteData(lambdaRole);
 
     // S3 permissions
     logsBucket.grantReadWrite(lambdaRole);
@@ -494,6 +523,40 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
       role: lambdaRole,
       environment: commonEnvironment,
       description: 'Cognito post-confirmation trigger - creates agent profile',
+    });
+
+    // Master Leads Lambda (shared pool — agents browse, admin manages)
+    const masterLeadsFunction = new lambda.Function(this, 'MasterLeadsFunction', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      functionName: 'RealtorMasterLeads',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/dist/master-leads')),
+      handler: 'index.handler',
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 512,
+      role: lambdaRole,
+      environment: {
+        ...commonEnvironment,
+        MASTER_LEADS_TABLE_NAME: masterLeadsTable.tableName,
+        AGENT_FUNNEL_TABLE_NAME: agentFunnelTable.tableName,
+      },
+      description: 'Manages the shared master leads pool and agent funnel browsing',
+    });
+
+    // Agent Funnel Lambda (agent's private copy of leads they are working)
+    const agentFunnelFunction = new lambda.Function(this, 'AgentFunnelFunction', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      functionName: 'RealtorAgentFunnel',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/dist/agent-funnel')),
+      handler: 'index.handler',
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 512,
+      role: lambdaRole,
+      environment: {
+        ...commonEnvironment,
+        MASTER_LEADS_TABLE_NAME: masterLeadsTable.tableName,
+        AGENT_FUNNEL_TABLE_NAME: agentFunnelTable.tableName,
+      },
+      description: 'Manages agent funnel entries copied from master leads',
     });
 
     // Add Lambda triggers to Cognito User Pool
@@ -874,6 +937,62 @@ export class RealtorLeadPlatformStack extends cdk.Stack {
         authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
       }
+    );
+
+    // ============================================
+    // MASTER LEADS + AGENT FUNNEL ENDPOINTS
+    // ============================================
+
+    // GET/POST /master-leads
+    const masterLeadsResource = api.root.addResource('master-leads');
+    masterLeadsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(masterLeadsFunction),
+      { authorizer, authorizationType: apigateway.AuthorizationType.COGNITO }
+    );
+    masterLeadsResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(masterLeadsFunction),
+      { authorizer, authorizationType: apigateway.AuthorizationType.COGNITO }
+    );
+
+    // PUT/DELETE /master-leads/{id}
+    const masterLeadByIdResource = masterLeadsResource.addResource('{id}');
+    masterLeadByIdResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(masterLeadsFunction),
+      { authorizer, authorizationType: apigateway.AuthorizationType.COGNITO }
+    );
+    masterLeadByIdResource.addMethod(
+      'DELETE',
+      new apigateway.LambdaIntegration(masterLeadsFunction),
+      { authorizer, authorizationType: apigateway.AuthorizationType.COGNITO }
+    );
+
+    // GET/POST /funnel
+    const funnelResource = api.root.addResource('funnel');
+    funnelResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(agentFunnelFunction),
+      { authorizer, authorizationType: apigateway.AuthorizationType.COGNITO }
+    );
+    funnelResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(agentFunnelFunction),
+      { authorizer, authorizationType: apigateway.AuthorizationType.COGNITO }
+    );
+
+    // PUT/DELETE /funnel/{id}
+    const funnelByIdResource = funnelResource.addResource('{id}');
+    funnelByIdResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(agentFunnelFunction),
+      { authorizer, authorizationType: apigateway.AuthorizationType.COGNITO }
+    );
+    funnelByIdResource.addMethod(
+      'DELETE',
+      new apigateway.LambdaIntegration(agentFunnelFunction),
+      { authorizer, authorizationType: apigateway.AuthorizationType.COGNITO }
     );
 
     // ============================================

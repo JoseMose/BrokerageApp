@@ -1,0 +1,170 @@
+name: Deploy to IBM Cloud Code Engine
+
+on:
+  push:
+    branches: [main]
+
+env:
+  IBM_REGION: us-south
+  BACKEND_APP_NAME: je-brokerage-api
+  FRONTEND_APP_NAME: je-brokerage-web
+  REGISTRY: us.icr.io
+  REGISTRY_NAMESPACE: je-brokerage
+
+jobs:
+  # ── Backend ────────────────────────────────────────────────────────────────
+  deploy-backend:
+    name: Build & Deploy Backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up IBM Cloud CLI
+        uses: IBM/actions-ibmcloud-cli@v1
+        with:
+          version: 'latest'
+
+      - name: Login to IBM Cloud
+        run: |
+          ibmcloud login --apikey "${{ secrets.IBM_IAM_API_KEY }}" -r $IBM_REGION -g Default
+          ibmcloud cr login
+          ibmcloud ce project select --name je-brokerage 2>/dev/null || \
+            ibmcloud ce project create --name je-brokerage
+
+      - name: Build & push backend image
+        run: |
+          IMAGE=$REGISTRY/$REGISTRY_NAMESPACE/backend:${{ github.sha }}
+          docker build -t "$IMAGE" ./backend
+          ibmcloud cr namespace-add $REGISTRY_NAMESPACE 2>/dev/null || true
+          docker push "$IMAGE"
+          echo "BACKEND_IMAGE=$IMAGE" >> $GITHUB_ENV
+
+      - name: Deploy backend to Code Engine
+        run: |
+          ibmcloud ce application create \
+            --name $BACKEND_APP_NAME \
+            --image ${{ env.BACKEND_IMAGE }} \
+            --port 8080 \
+            --min-scale 0 \
+            --max-scale 5 \
+            --cpu 0.25 \
+            --memory 0.5G \
+            --env CLOUDANT_URL="${{ secrets.CLOUDANT_URL }}" \
+            --env CLOUDANT_API_KEY="${{ secrets.CLOUDANT_API_KEY }}" \
+            --env APP_ID_TENANT_ID="${{ secrets.APP_ID_TENANT_ID }}" \
+            --env APP_ID_CLIENT_ID="${{ secrets.APP_ID_CLIENT_ID }}" \
+            --env APP_ID_REGION="us-south" \
+            --env WATSONX_API_KEY="${{ secrets.WATSONX_API_KEY }}" \
+            --env WATSONX_PROJECT_ID="${{ secrets.WATSONX_PROJECT_ID }}" \
+            --env WATSONX_REGION="us-south" \
+            --env WATSONX_MODEL_ID="ibm/granite-13b-instruct-v2" \
+            --env SENDGRID_API_KEY="${{ secrets.SENDGRID_API_KEY }}" \
+            --env FROM_EMAIL="${{ secrets.FROM_EMAIL }}" \
+            --env SUPPORT_EMAIL="${{ secrets.SUPPORT_EMAIL }}" \
+            --env IBM_EN_API_KEY="${{ secrets.IBM_EN_API_KEY }}" \
+            --env IBM_EN_INSTANCE_GUID="${{ secrets.IBM_EN_INSTANCE_GUID }}" \
+            --env IBM_EN_SOURCE_ID="${{ secrets.IBM_EN_SOURCE_ID }}" \
+            --env IBM_EN_REGION="us-south" \
+            --env HERE_API_KEY="${{ secrets.HERE_API_KEY }}" \
+            --env STRIPE_SECRET_KEY="${{ secrets.STRIPE_SECRET_KEY }}" \
+            --env STRIPE_WEBHOOK_SECRET="${{ secrets.STRIPE_WEBHOOK_SECRET }}" \
+            --env COS_BUCKET="${{ secrets.COS_BUCKET }}" \
+            --env COS_ENDPOINT="${{ secrets.COS_ENDPOINT }}" \
+            --env COS_API_KEY="${{ secrets.COS_API_KEY }}" \
+            --env NODE_ENV="production" \
+          2>/dev/null || \
+          ibmcloud ce application update \
+            --name $BACKEND_APP_NAME \
+            --image ${{ env.BACKEND_IMAGE }} \
+            --env CLOUDANT_URL="${{ secrets.CLOUDANT_URL }}" \
+            --env CLOUDANT_API_KEY="${{ secrets.CLOUDANT_API_KEY }}" \
+            --env APP_ID_TENANT_ID="${{ secrets.APP_ID_TENANT_ID }}" \
+            --env APP_ID_CLIENT_ID="${{ secrets.APP_ID_CLIENT_ID }}" \
+            --env APP_ID_REGION="us-south" \
+            --env WATSONX_API_KEY="${{ secrets.WATSONX_API_KEY }}" \
+            --env WATSONX_PROJECT_ID="${{ secrets.WATSONX_PROJECT_ID }}" \
+            --env WATSONX_REGION="us-south" \
+            --env WATSONX_MODEL_ID="ibm/granite-13b-instruct-v2" \
+            --env SENDGRID_API_KEY="${{ secrets.SENDGRID_API_KEY }}" \
+            --env FROM_EMAIL="${{ secrets.FROM_EMAIL }}" \
+            --env SUPPORT_EMAIL="${{ secrets.SUPPORT_EMAIL }}" \
+            --env IBM_EN_API_KEY="${{ secrets.IBM_EN_API_KEY }}" \
+            --env IBM_EN_INSTANCE_GUID="${{ secrets.IBM_EN_INSTANCE_GUID }}" \
+            --env IBM_EN_SOURCE_ID="${{ secrets.IBM_EN_SOURCE_ID }}" \
+            --env IBM_EN_REGION="us-south" \
+            --env HERE_API_KEY="${{ secrets.HERE_API_KEY }}" \
+            --env STRIPE_SECRET_KEY="${{ secrets.STRIPE_SECRET_KEY }}" \
+            --env STRIPE_WEBHOOK_SECRET="${{ secrets.STRIPE_WEBHOOK_SECRET }}" \
+            --env COS_BUCKET="${{ secrets.COS_BUCKET }}" \
+            --env COS_ENDPOINT="${{ secrets.COS_ENDPOINT }}" \
+            --env COS_API_KEY="${{ secrets.COS_API_KEY }}" \
+            --env NODE_ENV="production"
+
+      - name: Get backend URL
+        run: |
+          URL=$(ibmcloud ce application get --name $BACKEND_APP_NAME --output json | jq -r '.status.url')
+          echo "Backend deployed at: $URL"
+          echo "BACKEND_URL=$URL" >> $GITHUB_ENV
+
+  # ── Frontend ───────────────────────────────────────────────────────────────
+  deploy-frontend:
+    name: Build & Deploy Frontend
+    runs-on: ubuntu-latest
+    needs: deploy-backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up IBM Cloud CLI
+        uses: IBM/actions-ibmcloud-cli@v1
+        with:
+          version: 'latest'
+
+      - name: Login to IBM Cloud
+        run: |
+          ibmcloud login --apikey "${{ secrets.IBM_IAM_API_KEY }}" -r $IBM_REGION -g Default
+          ibmcloud cr login
+          ibmcloud ce project select --name je-brokerage
+
+      - name: Get backend URL
+        run: |
+          URL=$(ibmcloud ce application get --name $BACKEND_APP_NAME --output json | jq -r '.status.url')
+          echo "BACKEND_URL=$URL" >> $GITHUB_ENV
+
+      - name: Build & push frontend image
+        run: |
+          IMAGE=$REGISTRY/$REGISTRY_NAMESPACE/frontend:${{ github.sha }}
+          docker build \
+            --build-arg VITE_API_ENDPOINT="${{ env.BACKEND_URL }}" \
+            --build-arg VITE_APP_ID_TENANT_ID="${{ secrets.APP_ID_TENANT_ID }}" \
+            --build-arg VITE_APP_ID_CLIENT_ID="${{ secrets.APP_ID_CLIENT_ID }}" \
+            --build-arg VITE_APP_ID_REGION="us-south" \
+            -t "$IMAGE" ./frontend
+          docker push "$IMAGE"
+          echo "FRONTEND_IMAGE=$IMAGE" >> $GITHUB_ENV
+
+      - name: Deploy frontend to Code Engine
+        run: |
+          ibmcloud ce application create \
+            --name $FRONTEND_APP_NAME \
+            --image ${{ env.FRONTEND_IMAGE }} \
+            --port 8080 \
+            --min-scale 0 \
+            --max-scale 3 \
+            --cpu 0.125 \
+            --memory 0.25G \
+          2>/dev/null || \
+          ibmcloud ce application update \
+            --name $FRONTEND_APP_NAME \
+            --image ${{ env.FRONTEND_IMAGE }}
+
+      - name: Summary
+        run: |
+          FRONTEND_URL=$(ibmcloud ce application get --name $FRONTEND_APP_NAME --output json | jq -r '.status.url')
+          echo "### Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "- **Frontend:** $FRONTEND_URL" >> $GITHUB_STEP_SUMMARY
+          echo "- **Backend:**  ${{ env.BACKEND_URL }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:**   ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY

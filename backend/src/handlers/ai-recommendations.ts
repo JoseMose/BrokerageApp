@@ -1,12 +1,21 @@
-import {
-  BedrockRuntimeClient,
-  ConverseCommand,
-} from '@aws-sdk/client-bedrock-runtime';
+import { WatsonXAI } from '@ibm-cloud/watsonx-ai';
+import { IamAuthenticator } from 'ibm-cloud-sdk-core';
 import { getConfig } from '../utils/types';
 import { DynamoDBService } from '../utils/dynamodb';
 
 const config = getConfig();
-const bedrockClient = new BedrockRuntimeClient({ region: config.AWS_REGION });
+
+const REGION     = process.env.WATSONX_REGION     || 'us-south';
+const MODEL_ID   = process.env.WATSONX_MODEL_ID   || 'ibm/granite-13b-instruct-v2';
+const PROJECT_ID = process.env.WATSONX_PROJECT_ID || '';
+
+function getWatsonXClient(): WatsonXAI {
+  return WatsonXAI.newInstance({
+    authenticator: new IamAuthenticator({ apikey: process.env.WATSONX_API_KEY || '' }),
+    serviceUrl: `https://${REGION}.ml.cloud.ibm.com`,
+    version: '2024-01-29',
+  });
+}
 
 interface LeadData {
   leadId: string;
@@ -175,7 +184,7 @@ export const handler = async (event: any) => {
         success: true,
         recommendations,
         timestamp: new Date().toISOString(),
-        model: config.BEDROCK_MODEL_ID,
+        model: process.env.WATSONX_MODEL_ID || 'ibm/granite-13b-instruct-v2',
       }),
     };
   } catch (error: any) {
@@ -275,55 +284,52 @@ Return ONLY valid JSON with this structure:
 }
 
 /**
- * Call AWS Bedrock for AI-powered recommendations
+ * Call WatsonX AI (Granite) for AI-powered recommendations
  */
 async function callBedrockForRecommendations(
   prompt: string
 ): Promise<AIRecommendation[]> {
-  console.log('📞 Calling AWS Bedrock...');
-  
-  const command = new ConverseCommand({
-    modelId: config.BEDROCK_MODEL_ID,
-    messages: [
-      {
-        role: 'user',
-        content: [{ text: prompt }],
-      },
-    ],
-    inferenceConfig: {
-      maxTokens: 2000,
-      temperature: 0.3,
-      topP: 0.9,
+  console.log('📞 Calling WatsonX AI for recommendations...');
+
+  const client = getWatsonXClient();
+
+  const response = await client.generateText({
+    input:     prompt,
+    modelId:   MODEL_ID,
+    projectId: PROJECT_ID,
+    parameters: {
+      decoding_method:    'greedy',
+      max_new_tokens:     2000,
+      temperature:        0.3,
+      repetition_penalty: 1.1,
+      stop_sequences:     ['\n\n\n'],
     },
   });
 
-  const response = await bedrockClient.send(command);
-  const textResponse = response.output?.message?.content?.[0]?.text || '';
+  const textResponse: string = (response.result as any).results?.[0]?.generated_text || '';
 
   if (!textResponse) {
-    throw new Error('Empty response from Bedrock');
+    throw new Error('Empty response from WatsonX AI');
   }
 
-  console.log('📥 Bedrock response received');
+  console.log('📥 WatsonX response received');
 
-  // Parse JSON from response
   const jsonMatch = textResponse.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
-    throw new Error('No JSON found in Bedrock response');
+    throw new Error('No JSON found in WatsonX AI response');
   }
 
   const parsed = JSON.parse(jsonMatch[0]);
 
   if (!parsed.recommendations || !Array.isArray(parsed.recommendations)) {
-    throw new Error('Invalid recommendations format from Bedrock');
+    throw new Error('Invalid recommendations format from WatsonX AI');
   }
 
-  // Validate and return recommendations
   return parsed.recommendations.map((rec: any) => ({
-    leadId: rec.leadId,
-    priority: rec.priority,
-    reason: rec.reason,
-    action: rec.action,
+    leadId:     rec.leadId,
+    priority:   rec.priority,
+    reason:     rec.reason,
+    action:     rec.action,
     confidence: rec.confidence || 75,
   }));
 }

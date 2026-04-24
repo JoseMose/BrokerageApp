@@ -28,9 +28,7 @@ const HelpCenter = () => {
       description: "Manage your subscription and payments",
       articles: [
         { title: "Pricing and plans", link: "#pricing" },
-        { title: "How to purchase leads", link: "#purchase" },
-        { title: "Payment methods", link: "#payment-methods" },
-        { title: "Refund policy", link: "#refunds" }
+        { title: "Payment methods", link: "#payment-methods" }
       ]
     },
     {
@@ -42,10 +40,8 @@ const HelpCenter = () => {
       title: "Lead Management",
       description: "Tips for working with your leads",
       articles: [
-        { title: "Understanding lead scores", link: "#lead-scores" },
-        { title: "How to claim leads", link: "#claim-leads" },
         { title: "Best practices for contact", link: "#contact-practices" },
-        { title: "Disputing a lead", link: "#dispute" }
+        { title: "Moving leads through the funnel", link: "#funnel" }
       ]
     },
     {

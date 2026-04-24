@@ -25,7 +25,10 @@ const handlers = [
   'feedback',
   // Cognito triggers
   'pre-signup',
-  'post-signup'
+  'post-signup',
+  // Master Leads pool + Agent Funnel
+  'master-leads',
+  'agent-funnel'
 ];
 
 const distDir = path.join(__dirname, '..', 'dist');

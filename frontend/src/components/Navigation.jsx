@@ -18,14 +18,24 @@ function Navigation({ user, signOut }) {
     <nav className="navigation">
       <div className="container nav-container">
         <Link to="/dashboard" className="nav-brand">
-          <h2>🏠 HomeMatch AI</h2>
+          <div
+            style={{
+              width: '32px', height: '32px', borderRadius: '10px',
+              background: 'linear-gradient(135deg, #C9A84C, #D9BD6A)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontFamily: '"Playfair Display", serif', fontWeight: 700,
+              fontSize: '12px', color: '#0A0F1E', flexShrink: 0,
+            }}
+          >
+            JE
+          </div>
+          <h2>Joseph Esfandiari RE</h2>
         </Link>
         
         <div className="nav-menu">
           <Link to="/dashboard" className="nav-link">Dashboard</Link>
-          <Link to="/marketplace" className="nav-link">Marketplace</Link>
-          <Link to="/bulk-leads" className="nav-link">Bulk Leads</Link>
-          <Link to="/history" className="nav-link">My Leads</Link>
+          <Link to="/prospecting" className="nav-link">Prospecting</Link>
+          <Link to="/history" className="nav-link">My Lead Funnel</Link>
           <Link to="/profile" className="nav-link">Profile</Link>
           
           <div className="nav-user">

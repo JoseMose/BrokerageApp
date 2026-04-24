@@ -27,9 +27,8 @@ const TermsOfService = () => {
               HomeMatch AI provides an AI-powered platform that connects home buyers and sellers with qualified real estate agents. Our services include:
             </p>
             <ul className="list-disc pl-6 text-gray-700 mb-6">
-              <li>Lead generation and matching services</li>
-              <li>Agent marketplace and lead distribution</li>
-              <li>AI-powered scoring and recommendations</li>
+              <li>Lead generation and prospecting tools</li>
+              <li>AI-powered recommendations and pipeline management</li>
               <li>Communication facilitation between clients and agents</li>
             </ul>
 
@@ -54,7 +53,7 @@ const TermsOfService = () => {
               <li>Are in good standing with your licensing authority</li>
               <li>Will comply with all applicable real estate laws and regulations</li>
               <li>Will maintain professional conduct when contacting leads</li>
-              <li>Are authorized to purchase leads on behalf of your brokerage</li>
+              <li>Are affiliated with Joseph Esfandiari Real Estate</li>
             </ul>
 
             <h2 className="text-2xl font-semibold text-gray-900 mt-8 mb-4">4. Payment Terms</h2>

@@ -31,9 +31,6 @@ function Profile() {
     },
     radius: 15,
     preferences: {
-      leadTypes: ['buyer', 'seller'],
-      minScore: 5,
-      maxPrice: 200,
       propertyTypes: ['residential'],
       priceRange: {
         min: 0,
@@ -69,9 +66,6 @@ function Profile() {
         location: profileData.location || { address: '', city: '', state: '', zip: '' },
         radius: profileData.radius || 15,
         preferences: profileData.preferences || {
-          leadTypes: ['buyer', 'seller'],
-          minScore: 5,
-          maxPrice: 200,
           propertyTypes: ['residential'],
           priceRange: { min: 0, max: 10000000 },
         },
@@ -116,20 +110,6 @@ function Profile() {
     } else {
       setFormData(prev => ({ ...prev, [name]: value }));
     }
-  };
-
-  const handleLeadTypeChange = (type) => {
-    setFormData(prev => {
-      const currentTypes = prev.preferences.leadTypes;
-      const newTypes = currentTypes.includes(type)
-        ? currentTypes.filter(t => t !== type)
-        : [...currentTypes, type];
-      
-      return {
-        ...prev,
-        preferences: { ...prev.preferences, leadTypes: newTypes }
-      };
-    });
   };
 
   const handlePhotoChange = (e) => {
@@ -214,33 +194,6 @@ function Profile() {
     }
   };
 
-  const updateCapacity = async (newCapacity) => {
-    try {
-      setError(null);
-      
-      await agentAPI.updateProfile({
-        ...formData,
-        roundRobin: {
-          ...formData.roundRobin,
-          maxCapacity: newCapacity,
-        },
-      });
-      
-      setFormData(prev => ({
-        ...prev,
-        roundRobin: {
-          ...prev.roundRobin,
-          maxCapacity: newCapacity,
-        },
-      }));
-      
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 2000);
-    } catch (err) {
-      setError('Failed to update capacity');
-    }
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -259,16 +212,6 @@ function Profile() {
 
     if (!validateZipCode(formData.location.zip)) {
       setError('Invalid zip code format');
-      return;
-    }
-
-    if (formData.radius < 5 || formData.radius > 40) {
-      setError('Radius must be between 5 and 40 miles');
-      return;
-    }
-
-    if (formData.preferences.leadTypes.length === 0) {
-      setError('Please select at least one lead type');
       return;
     }
 
@@ -313,7 +256,7 @@ function Profile() {
           <h1>{isNewProfile ? 'Create Your Profile' : 'Your Profile'}</h1>
           <p className="subtitle">
             {isNewProfile 
-              ? 'Complete your profile to start viewing and purchasing leads' 
+              ? 'Complete your profile to get started' 
               : 'Manage your information, preferences, and settings'}
           </p>
         </div>
@@ -327,9 +270,6 @@ function Profile() {
               <span className="status-dot"></span>
               {formData.roundRobin?.isOnline ? 'Online' : 'Offline'}
             </button>
-            <div className="capacity-badge">
-              {formData.roundRobin?.assignedLeadCount || 0} / {formData.roundRobin?.maxCapacity || 10} leads
-            </div>
           </div>
         )}
       </div>
@@ -519,7 +459,7 @@ function Profile() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Brokerage *</label>
+                <label className="form-label">License Number *</label>
                 <input
                   type="text"
                   name="brokerage"
@@ -590,111 +530,23 @@ function Profile() {
               </div>
             </div>
 
-            <div className="grid grid-2">
-              <div className="form-group">
-                <label className="form-label">ZIP Code *</label>
-                <input
-                  type="text"
-                  name="location.zip"
-                  value={formData.location.zip}
-                  onChange={handleChange}
-                  className="form-input"
-                  placeholder="12345"
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Service Radius (miles) *</label>
-                <input
-                  type="number"
-                  name="radius"
-                  value={formData.radius}
-                  onChange={handleChange}
-                  className="form-input"
-                  min="5"
-                  max="40"
-                  required
-                />
-                <small className="form-help">Between 5 and 40 miles from your location</small>
-              </div>
+            <div className="form-group">
+              <label className="form-label">ZIP Code *</label>
+              <input
+                type="text"
+                name="location.zip"
+                value={formData.location.zip}
+                onChange={handleChange}
+                className="form-input"
+                placeholder="12345"
+                required
+              />
             </div>
           </div>
         )}
 
         {(isNewProfile || activeTab === 'preferences') && (
           <>
-            <div className="card">
-              <h2>Lead Preferences</h2>
-              
-              <div className="form-group">
-                <label className="form-label">Lead Types *</label>
-                <div className="checkbox-group">
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={formData.preferences.leadTypes.includes('buyer')}
-                      onChange={() => handleLeadTypeChange('buyer')}
-                    />
-                    <span>🏠 Buyer Leads</span>
-                  </label>
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={formData.preferences.leadTypes.includes('seller')}
-                      onChange={() => handleLeadTypeChange('seller')}
-                    />
-                    <span>💰 Seller Leads</span>
-                  </label>
-                </div>
-                <small className="form-help">
-                  Select which types of leads you want to receive
-                </small>
-              </div>
-
-              <div className="grid grid-2">
-                <div className="form-group">
-                  <label className="form-label">Minimum Lead Score</label>
-                  <select
-                    name="preferences.minScore"
-                    value={formData.preferences.minScore}
-                    onChange={handleChange}
-                    className="form-input"
-                  >
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(score => (
-                      <option key={score} value={score}>
-                        {score}+ {score >= 8 ? '(Premium)' : score >= 5 ? '(Good)' : '(Any)'}
-                      </option>
-                    ))}
-                  </select>
-                  <small className="form-help">
-                    Only show leads with this score or higher
-                  </small>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Maximum Price per Lead</label>
-                  <select
-                    name="preferences.maxPrice"
-                    value={formData.preferences.maxPrice}
-                    onChange={handleChange}
-                    className="form-input"
-                  >
-                    <option value="50">$50</option>
-                    <option value="70">$70</option>
-                    <option value="100">$100</option>
-                    <option value="150">$150</option>
-                    <option value="200">$200</option>
-                    <option value="300">$300</option>
-                    <option value="500">$500</option>
-                  </select>
-                  <small className="form-help">
-                    Maximum you're willing to pay per lead
-                  </small>
-                </div>
-              </div>
-            </div>
-
             <div className="card">
               <h2>Property Preferences</h2>
               
@@ -775,8 +627,8 @@ function Profile() {
         {!isNewProfile && activeTab === 'settings' && (
           <>
             <div className="card">
-              <h2>Lead Assignment Settings</h2>
-              
+              <h2>Availability Settings</h2>
+
               <div className="form-group">
                 <label className="form-label">Online Status</label>
                 <div className="status-control">
@@ -791,59 +643,13 @@ function Profile() {
                         {formData.roundRobin?.isOnline ? 'Online' : 'Offline'}
                       </div>
                       <div className="status-description">
-                        {formData.roundRobin?.isOnline 
-                          ? 'You will receive new lead assignments' 
-                          : 'You will not receive new lead assignments'}
+                        {formData.roundRobin?.isOnline
+                          ? 'You are visible and available for new leads'
+                          : 'You are currently marked as unavailable'}
                       </div>
                     </div>
                   </button>
                 </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">
-                  Maximum Lead Capacity
-                  <span className="capacity-info">
-                    Currently: {formData.roundRobin?.assignedLeadCount || 0} / {formData.roundRobin?.maxCapacity || 10}
-                  </span>
-                </label>
-                <input
-                  type="range"
-                  min="1"
-                  max="100"
-                  value={formData.roundRobin?.maxCapacity || 10}
-                  onChange={(e) => {
-                    const newCapacity = parseInt(e.target.value);
-                    setFormData(prev => ({
-                      ...prev,
-                      roundRobin: {
-                        ...prev.roundRobin,
-                        maxCapacity: newCapacity
-                      }
-                    }));
-                  }}
-                  onMouseUp={(e) => updateCapacity(parseInt(e.target.value))}
-                  onTouchEnd={(e) => updateCapacity(parseInt(e.target.value))}
-                  className="capacity-slider"
-                />
-                <div className="capacity-labels">
-                  <span>1</span>
-                  <span>{formData.roundRobin?.maxCapacity || 10} leads</span>
-                  <span>100</span>
-                </div>
-                <small className="form-help">
-                  Maximum number of active leads you can handle simultaneously
-                </small>
-              </div>
-
-              <div className="info-card">
-                <h3>💡 How Assignment Works</h3>
-                <ul>
-                  <li>Leads are automatically assigned using round-robin distribution</li>
-                  <li>When online, you'll receive leads that match your preferences</li>
-                  <li>Assignment stops when you reach your maximum capacity</li>
-                  <li>Close or pass leads to make room for new assignments</li>
-                </ul>
               </div>
             </div>
 

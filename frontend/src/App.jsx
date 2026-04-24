@@ -3,20 +3,15 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Authenticator } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
 import { getCurrentUser } from 'aws-amplify/auth';
-import { loadStripe } from '@stripe/stripe-js';
-import { Elements } from '@stripe/react-stripe-js';
 
 // Components
 import Navigation from './components/Navigation';
 import Dashboard from './pages/Dashboard';
-import Marketplace from './pages/Marketplace';
-import LeadDetails from './pages/LeadDetails';
 import Profile from './pages/Profile';
 import PurchaseHistory from './pages/PurchaseHistory';
 import AdminDashboard from './pages/AdminDashboard';
 import LandingPage from './pages/LandingPage';
 import RealtorAuth from './pages/RealtorAuth';
-import BulkLeads from './pages/BulkLeads';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
 import CookiePolicy from './pages/CookiePolicy';
@@ -24,11 +19,16 @@ import Contact from './pages/Contact';
 import FAQ from './pages/FAQ';
 import HelpCenter from './pages/HelpCenter';
 import HowItWorks from './pages/HowItWorks';
-
-// Initialize Stripe
-const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
-console.log('Stripe Key:', stripeKey ? 'Found' : 'Missing');
-const stripePromise = stripeKey ? loadStripe(stripeKey) : null;
+import HomeMatchPage from './pages/HomeMatchPage';
+import ProspectingHub from './pages/ProspectingHub';
+import PortalLogin from './pages/portal/PortalLogin';
+import PortalLayout from './pages/portal/PortalLayout';
+import PortalDashboard from './pages/portal/PortalDashboard';
+import PortalProperties from './pages/portal/PortalProperties';
+import PortalCashflow from './pages/portal/PortalCashflow';
+import PortalAI from './pages/portal/PortalAI';
+import PortalDocuments from './pages/portal/PortalDocuments';
+import PortalAlerts from './pages/portal/PortalAlerts';
 
 // Protected Route wrapper
 function ProtectedRoute({ children }) {
@@ -76,6 +76,7 @@ function App() {
         <Route path="/faq" element={<FAQ />} />
         <Route path="/help" element={<HelpCenter />} />
         <Route path="/how-it-works" element={<HowItWorks />} />
+        <Route path="/homematch" element={<HomeMatchPage />} />
 
         {/* Protected Routes */}
         <Route
@@ -88,54 +89,6 @@ function App() {
                     <Navigation user={user} signOut={signOut} />
                     <main className="main-content">
                       <Dashboard />
-                    </main>
-                  </div>
-                )}
-              </Authenticator>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/marketplace"
-          element={
-            <ProtectedRoute>
-              <Authenticator>
-                {({ signOut, user }) => (
-                  stripePromise ? (
-                    <Elements stripe={stripePromise}>
-                      <div className="app">
-                        <Navigation user={user} signOut={signOut} />
-                        <main className="main-content">
-                          <Marketplace />
-                        </main>
-                      </div>
-                    </Elements>
-                  ) : (
-                    <div className="app">
-                      <Navigation user={user} signOut={signOut} />
-                      <main className="main-content">
-                        <div style={{ padding: '20px', textAlign: 'center' }}>
-                          <h2>Payment System Configuration Error</h2>
-                          <p>Stripe is not configured. Please contact support.</p>
-                        </div>
-                      </main>
-                    </div>
-                  )
-                )}
-              </Authenticator>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/leads/:leadId"
-          element={
-            <ProtectedRoute>
-              <Authenticator>
-                {({ signOut, user }) => (
-                  <div className="app">
-                    <Navigation user={user} signOut={signOut} />
-                    <main className="main-content">
-                      <LeadDetails />
                     </main>
                   </div>
                 )}
@@ -161,6 +114,23 @@ function App() {
           }
         />
         <Route
+          path="/prospecting"
+          element={
+            <ProtectedRoute>
+              <Authenticator>
+                {({ signOut, user }) => (
+                  <div className="app">
+                    <Navigation user={user} signOut={signOut} />
+                    <main className="main-content">
+                      <ProspectingHub />
+                    </main>
+                  </div>
+                )}
+              </Authenticator>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/history"
           element={
             <ProtectedRoute>
@@ -170,23 +140,6 @@ function App() {
                     <Navigation user={user} signOut={signOut} />
                     <main className="main-content">
                       <PurchaseHistory />
-                    </main>
-                  </div>
-                )}
-              </Authenticator>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/bulk-leads"
-          element={
-            <ProtectedRoute>
-              <Authenticator>
-                {({ signOut, user }) => (
-                  <div className="app">
-                    <Navigation user={user} signOut={signOut} />
-                    <main className="main-content">
-                      <BulkLeads />
                     </main>
                   </div>
                 )}
@@ -206,6 +159,17 @@ function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* Portal Routes */}
+        <Route path="/portal/login" element={<PortalLogin />} />
+        <Route path="/portal" element={<PortalLayout />}>
+          <Route index element={<PortalDashboard />} />
+          <Route path="properties" element={<PortalProperties />} />
+          <Route path="cashflow" element={<PortalCashflow />} />
+          <Route path="ai" element={<PortalAI />} />
+          <Route path="documents" element={<PortalDocuments />} />
+          <Route path="alerts" element={<PortalAlerts />} />
+        </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

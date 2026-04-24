@@ -95,6 +95,20 @@ export default {
           800: '#991B1B',
           900: '#7F1D1D',
         },
+        // Premium gold accent
+        gold: {
+          DEFAULT: '#C9A84C',
+          50:  '#FBF7EC',
+          100: '#F5EDD3',
+          200: '#EBDBA7',
+          300: '#E1C97B',
+          400: '#D9BD6A',
+          500: '#C9A84C',
+          600: '#B08A2A',
+          700: '#836714',
+          800: '#5C4809',
+          900: '#3A2E06',
+        },
         // Keep legacy for backward compatibility
         primary: {
           50: '#EBF3FF',

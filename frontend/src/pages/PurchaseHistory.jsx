@@ -1,1026 +1,697 @@
 import React, { useState, useEffect } from 'react';
-import { agentAPI, feedbackAPI } from '../utils/api';
-import { formatCurrency, formatDateTime, getLeadTypeLabel } from '../utils/helpers';
-import LeadRatingModal from '../components/LeadRatingModal';
-import EditLeadModal from '../components/EditLeadModal';
-import './PurchaseHistory.css';
+import { agentAPI, adminAPI, funnelAPI } from '../utils/api';
 
-// Funnel stages
+// ─── Mappers ───────────────────────────────────────────────────────────────────
+// Map an agent_funnel entry to the local lead shape
+function mapFunnelEntry(entry) {
+  return {
+    id:              entry.id,
+    masterId:        entry.masterId,
+    ownerName:       entry.ownerName,
+    propertyAddress: entry.propertyAddress,
+    leadType:        entry.leadType,
+    phone:           entry.phone || '',
+    email:           entry.email || '',
+    stage:           entry.stage || 'new_lead',
+    notes:           entry.notes || '',
+    lastContactDate: entry.lastContactDate || null,
+    createdAt:       entry.addedAt,
+    _source:         'funnel',
+  };
+}
+
+// Map a self-created lead (from agentAPI.getProfile) to the local lead shape
+const PROSPECTING_TYPES = ['expired', 'fsbo', 'pre_foreclosure'];
+function mapSelfCreatedLead(lead) {
+  return {
+    id:              lead.leadId,
+    ownerName:       lead.contact?.name       || '',
+    propertyAddress: lead.location?.address   || '',
+    leadType:        lead.leadType,
+    phone:           lead.contact?.phone      || '',
+    email:           lead.contact?.email      || '',
+    stage:           lead.funnelStage         || 'new_lead',
+    notes:           lead.notes               || '',
+    lastContactDate: lead.updatedAt?.slice(0, 10) || null,
+    createdAt:       lead.createdAt,
+    _source:         'self_created',
+  };
+}
+
+// ─── Constants ─────────────────────────────────────────────────────────────────
 const FUNNEL_STAGES = [
-  { id: 'new_match', label: 'New Match', icon: '🎯', description: 'Lead just assigned to you' },
-  { id: 'first_outreach', label: 'First Outreach', icon: '📞', description: 'Attempted contact (text/call)' },
-  { id: 'connected', label: 'Connected', icon: '💬', description: 'Lead responded / convo started' },
-  { id: 'qualified', label: 'Qualified', icon: '✅', description: 'Confirmed real + viable' },
-  { id: 'appointment_set', label: 'Appointment Set', icon: '📅', description: 'Showing/listing scheduled' },
-  { id: 'active_client', label: 'Active Client', icon: '🤝', description: 'Officially working together' },
-  { id: 'under_contract', label: 'Under Contract', icon: '📝', description: 'Binding agreement signed' },
-  { id: 'closed', label: 'Closed', icon: '🏆', description: 'Deal completed!' },
-  { id: 'nurture', label: 'Nurture', icon: '🌱', description: 'Long-term follow-up' },
+  { id: 'new_lead',       label: 'New Lead',       color: '#C9A84C' },
+  { id: 'contacted',      label: 'Contacted',      color: '#2D6A9F' },
+  { id: 'appt_set',       label: 'Appt Set',       color: '#6B46C1' },
+  { id: 'under_contract', label: 'Under Contract', color: '#0F766E' },
+  { id: 'closed',         label: 'Closed',         color: '#15803D' },
 ];
 
-// Format questionnaire field names to readable labels
-const formatQuestionLabel = (key) => {
-  const labels = {
-    timeline: '⏱️ Timeline',
-    propertyType: '🏠 Property Type',
-    budget: '💰 Budget',
-    bedrooms: '🛏️ Bedrooms',
-    location: '📍 Location',
-    prequalified: '✅ Pre-qualified',
-    workingWithAgent: '🤝 Working with Agent',
-  };
-  return labels[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+const LEAD_TYPE_META = {
+  expired:         { label: 'Expired',        color: '#D97706', bg: 'rgba(217,119,6,0.12)',  border: 'rgba(217,119,6,0.3)'   },
+  fsbo:            { label: 'FSBO',           color: '#6BA3FF', bg: 'rgba(58,125,255,0.1)',  border: 'rgba(58,125,255,0.25)' },
+  pre_foreclosure: { label: 'Pre-Foreclosure',color: '#F87171', bg: 'rgba(239,68,68,0.1)',   border: 'rgba(239,68,68,0.25)'  },
 };
 
-// Format questionnaire answer values to readable text
-const formatAnswerValue = (value) => {
-  const valueMap = {
-    'asap': 'ASAP (Less than 30 days)',
-    '1-3-months': '1-3 Months',
-    '3-6-months': '3-6 Months',
-    '6-months': '6 Months',
-    'next-year': 'Next Year',
-    'just-browsing': 'Just Browsing',
-    'single-family': 'Single Family Home',
-    'condo': 'Condo',
-    'townhouse': 'Townhouse',
-    'multi-family': 'Multi-family',
-    'land': 'Land',
-    'under-300k': 'Under $300k',
-    '300k-500k': '$300k - $500k',
-    '500k-750k': '$500k - $750k',
-    '750k-1m': '$750k - $1M',
-    'over-1m': 'Over $1M',
-    'yes': 'Yes',
-    'no': 'No',
-  };
-  return valueMap[value] || String(value);
+// ─── Add Lead Modal ────────────────────────────────────────────────────────────
+const EMPTY_FORM = {
+  ownerName: '', propertyAddress: '', leadType: 'expired',
+  phone: '', email: '', stage: 'new_lead', notes: '',
 };
 
-function PurchaseHistory() {
-  const [purchases, setPurchases] = useState([]);
-  const [bulkPackages, setBulkPackages] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [selectedStage, setSelectedStage] = useState('new_match');
-  const [expandedLead, setExpandedLead] = useState(null);
-  const [showActivityForm, setShowActivityForm] = useState({}); // Track which lead's form is open
-  const [activityData, setActivityData] = useState({}); // Store form data per lead
-  const [leadActivities, setLeadActivities] = useState({}); // Store activities per lead
-  const [ratingModalLead, setRatingModalLead] = useState(null); // Lead being rated
-  const [leadFeedback, setLeadFeedback] = useState({}); // Track which leads have feedback
-  const [editModalLead, setEditModalLead] = useState(null); // Lead being edited
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createFormData, setCreateFormData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    leadType: 'buyer',
-    city: '',
-    state: '',
-    zip: '',
-    budget: '',
-    notes: ''
-  });
+function AddLeadModal({ onClose, onSave }) {
+  const [form, setForm] = useState(EMPTY_FORM);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  // Load activities from localStorage on mount
-  useEffect(() => {
-    const savedActivities = localStorage.getItem('leadActivities');
-    if (savedActivities) {
-      try {
-        setLeadActivities(JSON.parse(savedActivities));
-      } catch (err) {
-        console.error('Error loading activities:', err);
-      }
-    }
-  }, []);
-
-  // Save activities to localStorage whenever they change
-  useEffect(() => {
-    if (Object.keys(leadActivities).length > 0) {
-      localStorage.setItem('leadActivities', JSON.stringify(leadActivities));
-    }
-  }, [leadActivities]);
-
-  useEffect(() => {
-    fetchPurchaseHistory();
-  }, []);
-
-  const fetchPurchaseHistory = async () => {
-    try {
-      setLoading(true);
-      const response = await agentAPI.getProfile();
-      const purchasedLeads = response.data.data.purchasedLeads || [];
-      
-      // Separate bulk packages from individual leads
-      const packages = purchasedLeads.filter(p => p.lead?.leadType === 'bulk-package' || p.transaction?.leadId?.startsWith('package#'));
-      const individualLeads = purchasedLeads.filter(p => p.lead?.leadType !== 'bulk-package' && !p.transaction?.leadId?.startsWith('package#'));
-      
-      setBulkPackages(packages);
-      setPurchases(individualLeads);
-
-      // Check feedback status for each lead
-      const feedbackStatus = {};
-      for (const { transaction } of individualLeads) {
-        try {
-          const feedbackResponse = await feedbackAPI.getLeadFeedback(transaction.leadId);
-          if (feedbackResponse?.data?.hasFeedback) {
-            feedbackStatus[transaction.leadId] = true;
-          }
-        } catch (err) {
-          // Ignore errors, lead just won't show as having feedback
-        }
-      }
-      setLeadFeedback(feedbackStatus);
-
-      // Load activities from database into state
-      const activitiesFromDB = {};
-      individualLeads.forEach(({ transaction, lead }) => {
-        if (lead?.activities && Array.isArray(lead.activities)) {
-          activitiesFromDB[transaction.leadId] = lead.activities;
-        }
-      });
-      
-      // Merge with localStorage activities (localStorage takes precedence for newer activities)
-      setLeadActivities(prev => {
-        const merged = { ...activitiesFromDB };
-        Object.keys(prev).forEach(leadId => {
-          if (merged[leadId]) {
-            // Merge and deduplicate by timestamp
-            const combined = [...merged[leadId], ...prev[leadId]];
-            const unique = Array.from(
-              new Map(combined.map(act => [act.timestamp, act])).values()
-            );
-            merged[leadId] = unique.sort((a, b) => 
-              new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-            );
-          } else {
-            merged[leadId] = prev[leadId];
-          }
-        });
-        return merged;
-      });
-    } catch (err) {
-      console.error('Error fetching my leads:', err);
-      setError(err.response?.data?.error || 'Failed to load my leads');
-    } finally {
-      setLoading(false);
-    }
+  const handleSubmit = () => {
+    if (!form.ownerName || !form.propertyAddress) return;
+    onSave({ ...form, id: `lead_${Date.now()}`, lastContactDate: null, createdAt: new Date().toISOString() });
+    onClose();
   };
 
-  const updateLeadStage = async (leadId, newStage) => {
-    try {
-      // Update in backend
-      await agentAPI.updateLeadStage(leadId, newStage);
-      
-      // Update locally
-      setPurchases(prev => prev.map(p => 
-        p.transaction.leadId === leadId 
-          ? { ...p, lead: { ...p.lead, funnelStage: newStage } }
-          : p
-      ));
-    } catch (err) {
-      console.error('Error updating lead stage:', err);
-      setError('Failed to update lead stage');
-    }
+  const fieldStyle = {
+    width: '100%', boxSizing: 'border-box', padding: '0.65rem 0.875rem',
+    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: '8px', color: '#E8ECF4', fontSize: '0.875rem', outline: 'none',
+    fontFamily: '"Inter", sans-serif',
   };
-
-  const handleEditLead = (lead) => {
-    setEditModalLead(lead);
+  const labelStyle = {
+    display: 'block', fontSize: '0.68rem', fontWeight: 600,
+    textTransform: 'uppercase', letterSpacing: '0.12em', color: '#6B7280', marginBottom: '0.35rem',
   };
-
-  const handleSaveEdit = async (updatedData) => {
-    try {
-      await agentAPI.updateLead(editModalLead.leadId, updatedData);
-      
-      setEditModalLead(null);
-      alert('Lead updated successfully!');
-      
-      // Refresh data from server to show updates
-      setLoading(true);
-      await fetchPurchaseHistory();
-      setLoading(false);
-    } catch (err) {
-      console.error('Error updating lead:', err);
-      alert('Failed to update lead. Please try again.');
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteLead = async (leadId, leadName) => {
-    if (!confirm(`Are you sure you want to delete ${leadName}? This action cannot be undone.`)) {
-      return;
-    }
-
-    try {
-      await agentAPI.deleteLead(leadId);
-      
-      // Remove from local state
-      setPurchases(prev => prev.filter(p => p.lead?.leadId !== leadId));
-      
-      alert('Lead deleted successfully!');
-    } catch (err) {
-      console.error('Error deleting lead:', err);
-      alert('Failed to delete lead. Please try again.');
-    }
-  };
-
-  const toggleActivityForm = (leadId) => {
-    setShowActivityForm(prev => ({
-      ...prev,
-      [leadId]: !prev[leadId]
-    }));
-    
-    // Initialize form data if not exists
-    if (!activityData[leadId]) {
-      setActivityData(prev => ({
-        ...prev,
-        [leadId]: { type: 'call', notes: '' }
-      }));
-    }
-  };
-
-  const updateActivityData = (leadId, field, value) => {
-    setActivityData(prev => ({
-      ...prev,
-      [leadId]: {
-        ...prev[leadId],
-        [field]: value
-      }
-    }));
-  };
-
-  const logActivity = async (leadId) => {
-    const data = activityData[leadId];
-    if (!data || !data.notes.trim()) return;
-
-    const newActivity = {
-      id: Date.now(),
-      type: data.type,
-      notes: data.notes,
-      timestamp: new Date().toISOString(),
-    };
-
-    try {
-      // Save to database
-      await agentAPI.logLeadActivity(leadId, newActivity);
-      
-      // Update local state
-      setLeadActivities(prev => ({
-        ...prev,
-        [leadId]: [...(prev[leadId] || []), newActivity]
-      }));
-
-      // Reset form
-      setActivityData(prev => ({
-        ...prev,
-        [leadId]: { type: 'call', notes: '' }
-      }));
-      setShowActivityForm(prev => ({
-        ...prev,
-        [leadId]: false
-      }));
-
-      // Remove AI recommendation for this lead (client-side filtering, no AI call)
-      const cachedRecs = localStorage.getItem('aiRecommendations');
-      if (cachedRecs) {
-        try {
-          const recommendations = JSON.parse(cachedRecs);
-          const filtered = recommendations.filter(rec => rec.transaction?.leadId !== leadId);
-          localStorage.setItem('aiRecommendations', JSON.stringify(filtered));
-        } catch (err) {
-          console.error('Error filtering recommendations:', err);
-        }
-      }
-    } catch (err) {
-      console.error('Error logging activity:', err);
-      setError('Failed to log activity');
-    }
-  };
-
-  const getActivityIcon = (type) => {
-    const icons = {
-      call: '📞',
-      text: '💬',
-      email: '📧',
-      appointment: '📅',
-    };
-    return icons[type] || '📝';
-  };
-
-  const getActivityLabel = (type) => {
-    const labels = {
-      call: 'Phone Call',
-      text: 'Text Message',
-      email: 'Email',
-      appointment: 'Appointment',
-    };
-    return labels[type] || 'Activity';
-  };
-
-  // Handle rating modal
-  const handleRateLeadClick = async (lead, transaction) => {
-    // Check if feedback already exists
-    try {
-      const response = await feedbackAPI.getLeadFeedback(transaction.leadId);
-      if (response?.data?.hasFeedback) {
-        alert('You have already submitted feedback for this lead');
-        return;
-      }
-    } catch (err) {
-      console.error('Error checking feedback:', err);
-      // Continue to open modal even if check fails
-    }
-
-    setRatingModalLead({ ...lead, leadId: transaction.leadId, transactionId: transaction.transactionId });
-  };
-
-  const handleRatingSubmit = async (formData) => {
-    try {
-      const response = await feedbackAPI.submitLeadFeedback({
-        ...formData,
-        leadId: ratingModalLead.leadId,
-      });
-
-      if (response?.data) {
-        // Mark as rated
-        setLeadFeedback(prev => ({
-          ...prev,
-          [ratingModalLead.leadId]: true,
-        }));
-
-        alert('Thank you for your feedback! This helps us improve lead quality.');
-        setRatingModalLead(null);
-      } else {
-        throw new Error('Invalid response from server');
-      }
-    } catch (err) {
-      console.error('Error submitting feedback:', err);
-      alert(err?.response?.data?.error || 'Failed to submit feedback. Please try again.');
-    }
-  };
-
-  const handleCreateLead = async (e) => {
-    e.preventDefault();
-    
-    try {
-      // Create the lead via agent API
-      const response = await agentAPI.createOwnLead({
-        contact: {
-          name: createFormData.name,
-          email: createFormData.email,
-          phone: createFormData.phone,
-        },
-        leadType: createFormData.leadType,
-        location: {
-          city: createFormData.city,
-          state: createFormData.state,
-          zip: createFormData.zip,
-        },
-        questionnaire: {
-          budget: createFormData.budget || 'not-specified',
-        },
-        notes: createFormData.notes,
-        source: 'agent_manual',
-      });
-
-      alert('Lead created successfully! It will appear in your funnel.');
-      
-      // Reset form and close modal
-      setCreateFormData({
-        name: '',
-        email: '',
-        phone: '',
-        leadType: 'buyer',
-        city: '',
-        state: '',
-        zip: '',
-        budget: '',
-        notes: ''
-      });
-      setShowCreateModal(false);
-      
-      // Refresh the list
-      fetchPurchaseHistory();
-    } catch (err) {
-      console.error('Error creating lead:', err);
-      alert(err.response?.data?.message || 'Failed to create lead. Please try again.');
-    }
-  };
-
-  const getLeadsByStage = (stageId) => {
-    return purchases.filter(p => (p.lead?.funnelStage || 'new_match') === stageId);
-  };
-
-  const getFunnelStats = () => {
-    const stats = {};
-    FUNNEL_STAGES.forEach(stage => {
-      stats[stage.id] = purchases.filter(p => (p.lead?.funnelStage || 'new_match') === stage.id).length;
-    });
-    return stats;
-  };
-
-  const downloadCSV = (packageData) => {
-    const csvContent = [
-      ['Name', 'Email', 'Phone', 'Address', 'City', 'State', 'Zip', 'Lead Type', 'Score'],
-      ['Sample Lead 1', 'lead1@example.com', '555-0001', '123 Main St', 'Atlanta', 'GA', '30301', 'buyer', '3'],
-      ['Sample Lead 2', 'lead2@example.com', '555-0002', '456 Oak Ave', 'Atlanta', 'GA', '30302', 'seller', '2'],
-    ].map(row => row.join(',')).join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    
-    link.setAttribute('href', url);
-    link.setAttribute('download', `bulk-package-${packageData.transaction.transactionId}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  if (loading) {
-    return (
-      <div className="container">
-        <div className="loading">
-          <div className="spinner"></div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="container">
-        <div className="alert alert-error">{error}</div>
-      </div>
-    );
-  }
 
   return (
-    <div className="container purchase-history">
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <div>
-          <h1>🎯 My Lead Funnel</h1>
-          <p className="subtitle">Track your leads through each stage from first contact to closed deal</p>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '1rem' }}>
+      <div style={{ background: '#0D1220', border: '1px solid rgba(201,168,76,0.25)', borderRadius: '18px', padding: '2rem', width: '100%', maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 32px 80px rgba(0,0,0,0.6)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+          <h3 style={{ fontFamily: '"Playfair Display", serif', fontSize: '1.25rem', color: '#E8ECF4', margin: 0 }}>Add Lead</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6B7280', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1 }}>✕</button>
         </div>
-        <button 
-          onClick={() => setShowCreateModal(true)}
-          className="btn btn-primary"
-          style={{ 
-            padding: '12px 24px',
-            fontSize: '16px',
-            fontWeight: '600',
-            borderRadius: '8px',
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            border: 'none',
-            color: 'white',
-            cursor: 'pointer',
-            boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-            transition: 'transform 0.2s, box-shadow 0.2s'
-          }}
-          onMouseOver={(e) => {
-            e.target.style.transform = 'translateY(-2px)';
-            e.target.style.boxShadow = '0 6px 8px rgba(0,0,0,0.15)';
-          }}
-          onMouseOut={(e) => {
-            e.target.style.transform = 'translateY(0)';
-            e.target.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
-          }}
-        >
-          + Create Your Own Lead
-        </button>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <label style={labelStyle}>Owner Name *</label>
+            <input style={fieldStyle} value={form.ownerName} onChange={e => set('ownerName', e.target.value)} placeholder="Robert Chambers" />
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <label style={labelStyle}>Property Address *</label>
+            <input style={fieldStyle} value={form.propertyAddress} onChange={e => set('propertyAddress', e.target.value)} placeholder="842 Roswell Rd NE, Marietta, GA 30062" />
+          </div>
+          <div>
+            <label style={labelStyle}>Lead Type</label>
+            <select style={{ ...fieldStyle, cursor: 'pointer' }} value={form.leadType} onChange={e => set('leadType', e.target.value)}>
+              <option value="expired" style={{ background: '#0D1220' }}>Expired Listing</option>
+              <option value="fsbo" style={{ background: '#0D1220' }}>FSBO</option>
+              <option value="pre_foreclosure" style={{ background: '#0D1220' }}>Pre-Foreclosure</option>
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Stage</label>
+            <select style={{ ...fieldStyle, cursor: 'pointer' }} value={form.stage} onChange={e => set('stage', e.target.value)}>
+              {FUNNEL_STAGES.map(s => (
+                <option key={s.id} value={s.id} style={{ background: '#0D1220' }}>{s.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Phone</label>
+            <input style={fieldStyle} value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="(770) 555-0182" />
+          </div>
+          <div>
+            <label style={labelStyle}>Email</label>
+            <input style={fieldStyle} value={form.email} onChange={e => set('email', e.target.value)} placeholder="owner@email.com" />
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <label style={labelStyle}>Notes</label>
+            <textarea
+              style={{ ...fieldStyle, resize: 'vertical', minHeight: '80px' }}
+              value={form.notes}
+              onChange={e => set('notes', e.target.value)}
+              placeholder="Motivation, property condition, best time to call..."
+            />
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem', justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ padding: '0.625rem 1.25rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: '#9CA3AF', cursor: 'pointer', fontSize: '0.85rem' }}>
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!form.ownerName || !form.propertyAddress}
+            style={{ padding: '0.625rem 1.5rem', background: 'linear-gradient(135deg, #C9A84C, #D9BD6A)', border: 'none', borderRadius: '10px', color: '#0A0F1E', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', opacity: (!form.ownerName || !form.propertyAddress) ? 0.5 : 1 }}
+          >
+            Add Lead
+          </button>
+        </div>
       </div>
+    </div>
+  );
+}
 
-      {/* Bulk Packages Section */}
-      {bulkPackages.length > 0 && (
-        <div className="bulk-packages-section">
-          <h2>📦 Bulk Packages</h2>
-          <div className="purchases-count">
-            <strong>{bulkPackages.length}</strong> bulk package{bulkPackages.length !== 1 ? 's' : ''} purchased
+// ─── Assign Agent Modal ────────────────────────────────────────────────────────
+function AssignAgentModal({ lead, onClose, onAssigned }) {
+  const [agents, setAgents]     = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [search, setSearch]     = useState('');
+  const [assigning, setAssigning] = useState(null); // agentId being assigned
+  const [error, setError]       = useState('');
+
+  useEffect(() => {
+    adminAPI.getAgents().then(res => {
+      setAgents(res.data.data?.agents || []);
+    }).catch(() => {
+      setError('Could not load agents. Admin access required.');
+    }).finally(() => setLoading(false));
+  }, []);
+
+  const filtered = agents.filter(a =>
+    !search ||
+    a.name?.toLowerCase().includes(search.toLowerCase()) ||
+    a.email?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const handleAssign = async (agent) => {
+    setAssigning(agent.agentId);
+    setError('');
+    try {
+      await adminAPI.reassignLead(lead.id, agent.agentId);
+      onAssigned(lead.id);
+      onClose();
+    } catch {
+      setError('Failed to assign. Make sure you have admin privileges.');
+      setAssigning(null);
+    }
+  };
+
+  const fieldStyle = {
+    width: '100%', boxSizing: 'border-box', padding: '0.6rem 0.875rem',
+    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: '8px', color: '#E8ECF4', fontSize: '0.875rem', outline: 'none',
+    fontFamily: '"Inter", sans-serif',
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '1rem' }}>
+      <div style={{ background: '#0D1220', border: '1px solid rgba(201,168,76,0.25)', borderRadius: '18px', padding: '2rem', width: '100%', maxWidth: '480px', maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 32px 80px rgba(0,0,0,0.6)' }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+          <div>
+            <h3 style={{ fontFamily: '"Playfair Display", serif', fontSize: '1.15rem', color: '#E8ECF4', margin: '0 0 0.25rem' }}>Assign Lead</h3>
+            <div style={{ fontSize: '0.75rem', color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '340px' }}>
+              {lead.ownerName} — {lead.propertyAddress.split(',')[0]}
+            </div>
           </div>
-          
-          <div className="purchases-list">
-            {bulkPackages.map(({ transaction, lead }, index) => (
-              <div key={`${transaction.transactionId}-${index}`} className="purchase-card card bulk-package-card">
-                <div className="purchase-header">
-                  <div>
-                    <h3>
-                      📦 Bulk Package - {lead?.leadCount || 5} Leads
-                    </h3>
-                    <p className="purchase-date">
-                      Purchased on {formatDateTime(transaction.createdAt)}
-                    </p>
-                  </div>
-                  <div className="purchase-amount">
-                    {formatCurrency(transaction.amount)}
-                  </div>
-                </div>
-
-                <div className="bulk-package-info">
-                  <div className="package-stats">
-                    <div className="stat">
-                      <span className="stat-label">Leads Included:</span>
-                      <span className="stat-value">{lead?.leadCount || 5}</span>
-                    </div>
-                    <div className="stat">
-                      <span className="stat-label">Price per Lead:</span>
-                      <span className="stat-value">{formatCurrency((transaction.amount || 50) / (lead?.leadCount || 5))}</span>
-                    </div>
-                    <div className="stat">
-                      <span className="stat-label">Package ID:</span>
-                      <span className="stat-value package-id">{lead?.packageId || transaction.leadId}</span>
-                    </div>
-                  </div>
-
-                  <button 
-                    className="btn btn-primary download-btn"
-                    onClick={() => downloadCSV({ transaction, lead })}
-                  >
-                    📥 Download CSV
-                  </button>
-                </div>
-
-                <div className="purchase-footer">
-                  <span className={`badge ${transaction.status === 'completed' ? 'badge-success' : 'badge-warning'}`}>
-                    {transaction.status}
-                  </span>
-                  <span className="transaction-id">ID: {transaction.transactionId}</span>
-                </div>
-              </div>
-            ))}
-          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6B7280', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1, flexShrink: 0, marginLeft: '0.5rem' }}>✕</button>
         </div>
-      )}
 
-      {/* Sales Funnel View - Always Show */}
-      <div className="funnel-section">
-        <div className="funnel-container">
-          {/* Left Side: Funnel Pipeline */}
-          <div className="funnel-sidebar">
-            <div className="funnel-sidebar-header">
-              <h2>🏆 Sales Pipeline</h2>
-              <div className="total-leads-badge">
-                {purchases.length} {purchases.length === 1 ? 'Lead' : 'Leads'}
-              </div>
-            </div>
+        {/* Search */}
+        <input
+          style={{ ...fieldStyle, marginBottom: '0.875rem' }}
+          placeholder="Search agents by name or email..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          autoFocus
+        />
 
-            {/* Funnel Visual Pipeline */}
-            <div className="funnel-pipeline">
-              {FUNNEL_STAGES.map((stage, index) => {
-                const count = getFunnelStats()[stage.id];
-                const percentage = purchases.length > 0 ? (count / purchases.length) * 100 : 0;
-                const isSelected = selectedStage === stage.id;
-                
-                return (
-                  <div key={stage.id}>
-                    <button
-                      className={`funnel-stage ${isSelected ? 'selected' : ''} ${count === 0 ? 'empty' : ''}`}
-                      onClick={() => setSelectedStage(stage.id)}
-                    >
-                      <div className="funnel-stage-header">
-                        <div className="funnel-stage-info">
-                          <span className="funnel-icon">{stage.icon}</span>
-                          <div>
-                            <div className="funnel-stage-name">{stage.label}</div>
-                            <div className="funnel-stage-desc">{stage.description}</div>
-                          </div>
-                        </div>
-                        <div className="funnel-stage-stats">
-                          <div className="funnel-count">{count}</div>
-                        </div>
-                      </div>
-                      <div className="funnel-bar-container">
-                        <div 
-                          className="funnel-bar" 
-                          style={{ width: `${percentage}%` }}
-                        ></div>
-                      </div>
-                    </button>
-                    {index < FUNNEL_STAGES.length - 1 && <div className="funnel-connector">▼</div>}
-                  </div>
-                );
-              })}
-            </div>
+        {/* Error */}
+        {error && (
+          <div style={{ marginBottom: '0.75rem', padding: '0.6rem 0.875rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', color: '#F87171', fontSize: '0.8rem' }}>
+            {error}
           </div>
+        )}
 
-          {/* Right Side: Lead Details */}
-          <div className="leads-content">
-            {purchases.length > 0 ? (
-              <>
-                <div className="leads-content-header">
-                  <h3>
-                    <span className="stage-icon-large">{FUNNEL_STAGES.find(s => s.id === selectedStage)?.icon}</span>
-                    {FUNNEL_STAGES.find(s => s.id === selectedStage)?.label}
-                  </h3>
-                  <div className="stage-count-badge">
-                    {getLeadsByStage(selectedStage).length} {getLeadsByStage(selectedStage).length === 1 ? 'Lead' : 'Leads'}
-                  </div>
+        {/* Agent list */}
+        <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          {loading && (
+            <div style={{ textAlign: 'center', padding: '2rem', color: '#4A5568', fontSize: '0.875rem' }}>Loading agents...</div>
+          )}
+          {!loading && filtered.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '2rem', color: '#4A5568', fontSize: '0.875rem' }}>No agents found.</div>
+          )}
+          {filtered.map(agent => (
+            <div
+              key={agent.agentId}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', gap: '0.75rem' }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#E8ECF4', marginBottom: '0.15rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {agent.name || agent.email}
                 </div>
-
-                <div className="leads-list">
-                  {getLeadsByStage(selectedStage).map(({ transaction, lead }) => (
-                    <div key={lead?.leadId || transaction.transactionId} className="lead-detail-card">
-                      {/* Lead Header */}
-                      <div className="lead-detail-header">
-                        <div className="lead-main-info">
-                          <h4>{lead?.contact?.name || 'Unknown Lead'}</h4>
-                          <div className="lead-meta">
-                            <span className={`badge ${lead?.leadType === 'seller' ? 'badge-success' : 'badge-primary'}`}>
-                              {getLeadTypeLabel(lead?.leadType)}
-                            </span>
-                            <span className="lead-score-badge">Score: {lead?.score}/10</span>
-                            <span className="lead-location">📍 {lead?.location?.city}, {lead?.location?.state}</span>
-                          </div>
-                        </div>
-                        
-                        <div className="lead-actions-group">
-                          {/* Stage Selector */}
-                          <select
-                            className="stage-selector-compact"
-                            value={lead?.funnelStage || 'new_match'}
-                            onChange={(e) => updateLeadStage(lead?.leadId, e.target.value)}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {FUNNEL_STAGES.map(stage => (
-                              <option key={stage.id} value={stage.id}>
-                                {stage.icon} {stage.label}
-                              </option>
-                            ))}
-                          </select>
-                          
-                          {/* Edit and Delete Buttons */}
-                          <button
-                            className="btn-icon-action btn-edit"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEditLead(lead);
-                            }}
-                            title="Edit Lead"
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            className="btn-icon-action btn-delete"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteLead(lead?.leadId, lead?.contact?.name || 'this lead');
-                            }}
-                            title="Delete Lead"
-                          >
-                            🗑️
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Contact Information */}
-                      <div className="lead-contact-section">
-                        <h5>📞 Contact Information</h5>
-                        <div className="contact-grid">
-                          <div className="contact-item">
-                            <span className="contact-label">Email</span>
-                            <a href={`mailto:${lead?.contact?.email}`} className="contact-value">
-                              {lead?.contact?.email}
-                            </a>
-                          </div>
-                          <div className="contact-item">
-                            <span className="contact-label">Phone</span>
-                            <a href={`tel:${lead?.contact?.phone}`} className="contact-value">
-                              {lead?.contact?.phone}
-                            </a>
-                          </div>
-                          <div className="contact-item">
-                            <span className="contact-label">Address</span>
-                            <span className="contact-value">
-                              {lead?.location?.city}, {lead?.location?.state} {lead?.location?.zip}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Outreach Timeline */}
-                      <div className="outreach-section">
-                        <h5>📋 Activity Timeline</h5>
-                        <div className="timeline">
-                          <div className="timeline-item">
-                            <div className="timeline-icon">{transaction.source === 'agent_manual' ? '✏️' : '💰'}</div>
-                            <div className="timeline-content">
-                              <div className="timeline-title">
-                                {transaction.source === 'agent_manual' ? 'Lead Created' : 'Lead Purchased'}
-                              </div>
-                              <div className="timeline-date">{formatDateTime(transaction.createdAt)}</div>
-                              <div className="timeline-detail">
-                                {transaction.source === 'agent_manual' ? 'Manually Added' : `Price: ${formatCurrency(transaction.amount)}`}
-                              </div>
-                            </div>
-                          </div>
-                          
-                          {/* Display logged activities */}
-                          {leadActivities[transaction.leadId]?.map((activity) => (
-                            <div key={activity.id} className="timeline-item">
-                              <div className="timeline-icon">{getActivityIcon(activity.type)}</div>
-                              <div className="timeline-content">
-                                <div className="timeline-title">{getActivityLabel(activity.type)}</div>
-                                <div className="timeline-date">{formatDateTime(activity.timestamp)}</div>
-                                <div className="timeline-detail">{activity.notes}</div>
-                              </div>
-                            </div>
-                          ))}
-                          
-                          {/* Placeholder if no activities logged yet */}
-                          {(!leadActivities[transaction.leadId] || leadActivities[transaction.leadId].length === 0) && (
-                            <div className="timeline-item placeholder">
-                              <div className="timeline-icon">📞</div>
-                              <div className="timeline-content">
-                                <div className="timeline-title">First Contact</div>
-                                <div className="timeline-note">Track your outreach attempts here</div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Inline Activity Form */}
-                        {!showActivityForm[transaction.leadId] ? (
-                          <button 
-                            className="add-activity-btn"
-                            onClick={() => toggleActivityForm(transaction.leadId)}
-                          >
-                            + Log Activity
-                          </button>
-                        ) : (
-                          <div className="activity-form">
-                            <div className="activity-form-row">
-                              <select
-                                className="activity-type-select"
-                                value={activityData[transaction.leadId]?.type || 'call'}
-                                onChange={(e) => updateActivityData(transaction.leadId, 'type', e.target.value)}
-                              >
-                                <option value="call">📞 Phone Call</option>
-                                <option value="text">💬 Text Message</option>
-                                <option value="email">📧 Email</option>
-                                <option value="appointment">📅 Appointment</option>
-                              </select>
-                            </div>
-                            <div className="activity-form-row">
-                              <textarea
-                                className="activity-notes-input"
-                                rows="3"
-                                placeholder="What happened? Any important details..."
-                                value={activityData[transaction.leadId]?.notes || ''}
-                                onChange={(e) => updateActivityData(transaction.leadId, 'notes', e.target.value)}
-                              ></textarea>
-                            </div>
-                            <div className="activity-form-actions">
-                              <button 
-                                className="btn-cancel-activity"
-                                onClick={() => toggleActivityForm(transaction.leadId)}
-                              >
-                                Cancel
-                              </button>
-                              <button 
-                                className="btn-save-activity"
-                                onClick={() => logActivity(transaction.leadId)}
-                                disabled={!activityData[transaction.leadId]?.notes?.trim()}
-                              >
-                                Save Activity
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* AI Analysis */}
-                      {lead?.aiReason && (
-                        <div className="ai-analysis-section">
-                          <h5>🤖 AI Analysis</h5>
-                          <p className="ai-reason">{lead.aiReason}</p>
-                        </div>
-                      )}
-
-                      {/* Action Buttons */}
-                      <div className="lead-action-buttons">
-                        <button
-                          className="expand-details-btn"
-                          onClick={() => setExpandedLead(expandedLead === transaction.transactionId ? null : transaction.transactionId)}
-                        >
-                          {expandedLead === transaction.transactionId ? '▲ Hide Details' : '▼ Show All Details'}
-                        </button>
-                        
-                        {!leadFeedback[transaction.leadId] && (
-                          <button
-                            className="rate-lead-btn"
-                            onClick={() => handleRateLeadClick(lead, transaction)}
-                          >
-                            ⭐ Rate Lead Quality
-                          </button>
-                        )}
-                        
-                        {leadFeedback[transaction.leadId] && (
-                          <div className="feedback-submitted-badge">
-                            ✅ Feedback Submitted
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Expanded Details */}
-                      {expandedLead === transaction.transactionId && lead?.responses && (
-                        <div className="expanded-details">
-                          <h5>📝 Questionnaire Responses</h5>
-                          <div className="responses-grid">
-                            {Object.entries(lead.responses).map(([question, answer]) => (
-                              <div key={question} className="response-item">
-                                <div className="response-question">{formatQuestionLabel(question)}</div>
-                                <div className="response-answer">{formatAnswerValue(answer)}</div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-
-                  {getLeadsByStage(selectedStage).length === 0 && (
-                    <div className="empty-stage-content">
-                      <div className="empty-icon">
-                        {FUNNEL_STAGES.find(s => s.id === selectedStage)?.icon}
-                      </div>
-                      <h3>No leads in this stage</h3>
-                      <p>Move leads here by updating their stage, or purchase new leads from the marketplace.</p>
-                    </div>
-                  )}
+                <div style={{ fontSize: '0.72rem', color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {agent.email}
+                  {agent.licenseId && <span style={{ marginLeft: '0.5rem', color: '#374151' }}>· #{agent.licenseId}</span>}
                 </div>
-              </>
-            ) : (
-              <div className="empty-funnel-cta">
-                <div className="empty-icon">🎯</div>
-                <h3>Ready to fill your pipeline?</h3>
-                <p>Purchase leads from the marketplace to start tracking them through your sales funnel.</p>
-                <a href="/marketplace" className="btn btn-primary btn-large">
-                  Browse Available Leads
-                </a>
+              </div>
+              <button
+                onClick={() => handleAssign(agent)}
+                disabled={!!assigning}
+                style={{
+                  padding: '0.4rem 1rem', background: assigning === agent.agentId ? 'rgba(201,168,76,0.2)' : 'linear-gradient(135deg, #C9A84C, #D9BD6A)',
+                  border: 'none', borderRadius: '8px', color: '#0A0F1E', fontWeight: 700,
+                  cursor: assigning ? 'wait' : 'pointer', fontSize: '0.78rem', flexShrink: 0,
+                  opacity: assigning && assigning !== agent.agentId ? 0.5 : 1,
+                }}
+              >
+                {assigning === agent.agentId ? '...' : 'Assign'}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Trapezoid Funnel ──────────────────────────────────────────────────────────
+// Target widths per stage (% of container). Each stage element is centered and
+// clip-path'd so its bottom edge matches the next stage's top edge exactly.
+const STAGE_WIDTHS = [100, 82, 64, 46, 28];
+
+function FunnelViz({ stages, counts, total, selectedStage, onSelect }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', gap: 0 }}>
+      {stages.map((stage, i) => {
+        const count     = counts[stage.id] || 0;
+        const pct       = total > 0 ? Math.round((count / total) * 100) : 0;
+        const prevCount = i > 0 ? (counts[stages[i - 1].id] || 0) : null;
+        const dropped   = prevCount !== null ? Math.max(0, prevCount - count) : null;
+        const isActive  = selectedStage === stage.id;
+
+        const w     = STAGE_WIDTHS[i];
+        const nextW = STAGE_WIDTHS[i + 1] ?? (w * 0.7); // last stage tapers slightly
+        // Bottom inset as % of this element's own width
+        const botInsetPct = ((w - nextW) / (2 * w)) * 100;
+        const clip = `polygon(0% 0%, 100% 0%, ${(100 - botInsetPct).toFixed(2)}% 100%, ${botInsetPct.toFixed(2)}% 100%)`;
+
+        return (
+          <React.Fragment key={stage.id}>
+            {/* Drop indicator */}
+            {dropped !== null && (
+              <div style={{ width: '100%', textAlign: 'center', fontSize: '0.65rem', color: '#374151', padding: '5px 0', userSelect: 'none', letterSpacing: '0.04em' }}>
+                ↓ {dropped > 0 ? `${dropped} dropped` : '—'}
               </div>
             )}
-          </div>
-        </div>
-      </div>
 
-      {/* Rating Modal */}
-      <LeadRatingModal
-        lead={ratingModalLead}
-        isOpen={!!ratingModalLead}
-        onClose={() => setRatingModalLead(null)}
-        onSubmit={handleRatingSubmit}
-      />
+            {/* Trapezoid button */}
+            <button
+              onClick={() => onSelect(isActive ? null : stage.id)}
+              style={{
+                width: `${w}%`,
+                height: '68px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '3px',
+                padding: 0,
+                background: isActive ? `${stage.color}38` : `${stage.color}18`,
+                border: `1px solid ${isActive ? stage.color + 'CC' : stage.color + '50'}`,
+                boxShadow: isActive ? `0 0 24px ${stage.color}30` : 'none',
+                clipPath: clip,
+                cursor: 'pointer',
+                outline: 'none',
+                boxSizing: 'border-box',
+                transition: 'background 0.15s, box-shadow 0.15s',
+              }}
+              onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = `${stage.color}28`; }}
+              onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = `${stage.color}18`; }}
+            >
+              <span style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: isActive ? stage.color : '#9CA3AF', whiteSpace: 'nowrap' }}>
+                {stage.label}
+              </span>
+              <span style={{ fontSize: '0.72rem', color: '#6B7280', whiteSpace: 'nowrap' }}>
+                <span style={{ fontWeight: 700, fontSize: '0.9rem', color: isActive ? stage.color : '#E8ECF4' }}>{count}</span>
+                {' '}· {pct}%
+              </span>
+            </button>
+          </React.Fragment>
+        );
+      })}
 
-      {/* Edit Lead Modal */}
-      {editModalLead && (
-        <EditLeadModal
-          lead={editModalLead}
-          onClose={() => setEditModalLead(null)}
-          onSave={handleSaveEdit}
-        />
-      )}
-
-      {/* Create Lead Modal */}
-      {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div className="modal-header">
-              <h2>➕ Create Your Own Lead</h2>
-              <button className="modal-close" onClick={() => setShowCreateModal(false)}>✕</button>
-            </div>
-            
-            <form onSubmit={handleCreateLead} className="create-lead-form">
-              <div className="form-section">
-                <h3>Contact Information</h3>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Name *</label>
-                    <input
-                      type="text"
-                      required
-                      value={createFormData.name}
-                      onChange={(e) => setCreateFormData({...createFormData, name: e.target.value})}
-                      placeholder="John Smith"
-                    />
-                  </div>
-                </div>
-                
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Email *</label>
-                    <input
-                      type="email"
-                      required
-                      value={createFormData.email}
-                      onChange={(e) => setCreateFormData({...createFormData, email: e.target.value})}
-                      placeholder="john@example.com"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Phone *</label>
-                    <input
-                      type="tel"
-                      required
-                      value={createFormData.phone}
-                      onChange={(e) => setCreateFormData({...createFormData, phone: e.target.value})}
-                      placeholder="(555) 123-4567"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="form-section">
-                <h3>Lead Details</h3>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Lead Type *</label>
-                    <select
-                      value={createFormData.leadType}
-                      onChange={(e) => setCreateFormData({...createFormData, leadType: e.target.value})}
-                    >
-                      <option value="buyer">🏠 Buyer</option>
-                      <option value="seller">💰 Seller</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>City</label>
-                    <input
-                      type="text"
-                      value={createFormData.city}
-                      onChange={(e) => setCreateFormData({...createFormData, city: e.target.value})}
-                      placeholder="Atlanta"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>State</label>
-                    <input
-                      type="text"
-                      value={createFormData.state}
-                      onChange={(e) => setCreateFormData({...createFormData, state: e.target.value})}
-                      placeholder="GA"
-                      maxLength="2"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>ZIP</label>
-                    <input
-                      type="text"
-                      value={createFormData.zip}
-                      onChange={(e) => setCreateFormData({...createFormData, zip: e.target.value})}
-                      placeholder="30301"
-                      maxLength="5"
-                    />
-                  </div>
-                </div>
-
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Budget</label>
-                    <select
-                      value={createFormData.budget}
-                      onChange={(e) => setCreateFormData({...createFormData, budget: e.target.value})}
-                    >
-                      <option value="">Select budget range...</option>
-                      <option value="under-300k">Under $300k</option>
-                      <option value="300k-500k">$300k - $500k</option>
-                      <option value="500k-750k">$500k - $750k</option>
-                      <option value="750k-1m">$750k - $1M</option>
-                      <option value="over-1m">Over $1M</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Notes</label>
-                    <textarea
-                      value={createFormData.notes}
-                      onChange={(e) => setCreateFormData({...createFormData, notes: e.target.value})}
-                      placeholder="Add any additional details about this lead..."
-                      rows="4"
-                    ></textarea>
-                  </div>
-                </div>
-              </div>
-
-              <div className="modal-actions">
-                <button type="button" className="btn-cancel" onClick={() => setShowCreateModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn-primary">
-                  Create Lead
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {selectedStage && (
+        <button
+          onClick={() => onSelect(null)}
+          style={{ marginTop: '1rem', background: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#6B7280', fontSize: '0.72rem', padding: '0.35rem 0.875rem', cursor: 'pointer' }}
+        >
+          Clear filter ×
+        </button>
       )}
     </div>
   );
 }
 
-export default PurchaseHistory;
+// ─── Lead Card ─────────────────────────────────────────────────────────────────
+function LeadCard({ lead, onMoveStage, onDelete }) {
+  const [stageOpen, setStageOpen] = useState(false);
+  const lt = LEAD_TYPE_META[lead.leadType] || LEAD_TYPE_META.expired;
+  const stage = FUNNEL_STAGES.find(s => s.id === lead.stage) || FUNNEL_STAGES[0];
+
+  return (
+    <div style={{ background: '#0D1929', border: '1px solid rgba(201,168,76,0.2)', borderRadius: '12px', padding: '1.125rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', position: 'relative' }}>
+      {/* Header row */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
+        <div>
+          <div style={{ fontSize: '0.925rem', fontWeight: 600, color: '#E8ECF4', marginBottom: '0.2rem' }}>{lead.ownerName}</div>
+          {lead.email && <div style={{ fontSize: '0.75rem', color: '#6B7280' }}>{lead.email}</div>}
+        </div>
+        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexShrink: 0 }}>
+          <span style={{ padding: '0.2rem 0.55rem', borderRadius: '8px', fontSize: '0.67rem', fontWeight: 600, color: lt.color, background: lt.bg, border: `1px solid ${lt.border}` }}>
+            {lt.label}
+          </span>
+          <span style={{ padding: '0.2rem 0.55rem', borderRadius: '8px', fontSize: '0.67rem', fontWeight: 600, color: stage.color, background: `${stage.color}15`, border: `1px solid ${stage.color}40` }}>
+            {stage.label}
+          </span>
+        </div>
+      </div>
+
+      {/* Address */}
+      <div style={{ fontSize: '0.8rem', color: '#9CA3AF', display: 'flex', alignItems: 'flex-start', gap: '0.35rem' }}>
+        <span style={{ color: '#4B5563', flexShrink: 0 }}>📍</span>
+        {lead.propertyAddress}
+      </div>
+
+      {/* Phone + Last contact */}
+      <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+        {lead.phone && (
+          <div style={{ fontSize: '0.78rem' }}>
+            <span style={{ color: '#4B5563', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', display: 'block', marginBottom: '0.15rem' }}>Phone</span>
+            <a href={`tel:${lead.phone}`} style={{ color: '#6BA3FF', textDecoration: 'none' }}>{lead.phone}</a>
+          </div>
+        )}
+        {lead.lastContactDate && (
+          <div style={{ fontSize: '0.78rem' }}>
+            <span style={{ color: '#4B5563', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', display: 'block', marginBottom: '0.15rem' }}>Last Contact</span>
+            <span style={{ color: '#9CA3AF' }}>{lead.lastContactDate}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Notes preview */}
+      {lead.notes && (
+        <div style={{ fontSize: '0.78rem', color: '#4B5563', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', lineHeight: 1.5 }}>
+          {lead.notes}
+        </div>
+      )}
+
+      {/* Action bar */}
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '0.125rem' }}>
+        {lead.phone && (
+          <a href={`tel:${lead.phone}`} style={{ padding: '0.35rem 0.75rem', background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.2)', borderRadius: '8px', color: '#34D399', fontSize: '0.72rem', fontWeight: 500, textDecoration: 'none', cursor: 'pointer' }}>
+            Call
+          </a>
+        )}
+        {lead.phone && (
+          <a href={`sms:${lead.phone}`} style={{ padding: '0.35rem 0.75rem', background: 'rgba(107,163,255,0.08)', border: '1px solid rgba(107,163,255,0.2)', borderRadius: '8px', color: '#6BA3FF', fontSize: '0.72rem', fontWeight: 500, textDecoration: 'none', cursor: 'pointer' }}>
+            Text
+          </a>
+        )}
+        {lead.email && (
+          <a href={`mailto:${lead.email}`} style={{ padding: '0.35rem 0.75rem', background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: '8px', color: '#A78BFA', fontSize: '0.72rem', fontWeight: 500, textDecoration: 'none', cursor: 'pointer' }}>
+            Email
+          </a>
+        )}
+
+        {/* Move Stage */}
+        <div style={{ position: 'relative', marginLeft: 'auto' }}>
+          <button
+            onClick={() => setStageOpen(o => !o)}
+            style={{ padding: '0.35rem 0.75rem', background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.25)', borderRadius: '8px', color: '#C9A84C', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}
+          >
+            Move Stage →
+          </button>
+          {stageOpen && (
+            <div
+              style={{ position: 'absolute', right: 0, bottom: 'calc(100% + 6px)', background: '#0D1220', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', overflow: 'hidden', zIndex: 20, minWidth: '168px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}
+              onMouseLeave={() => setStageOpen(false)}
+            >
+              {FUNNEL_STAGES.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => { onMoveStage(lead.id, s.id); setStageOpen(false); }}
+                  style={{
+                    display: 'block', width: '100%', padding: '0.6rem 1rem', textAlign: 'left',
+                    background: lead.stage === s.id ? `${s.color}18` : 'transparent',
+                    border: 'none',
+                    color: lead.stage === s.id ? s.color : '#9CA3AF',
+                    fontSize: '0.8rem', cursor: 'pointer', transition: 'background 0.1s',
+                  }}
+                  onMouseEnter={e => { if (lead.stage !== s.id) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+                  onMouseLeave={e => { if (lead.stage !== s.id) e.currentTarget.style.background = 'transparent'; }}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={() => onDelete(lead.id)}
+          style={{ padding: '0.35rem 0.5rem', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: '8px', color: '#F87171', fontSize: '0.72rem', cursor: 'pointer' }}
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ────────────────────────────────────────────────────────────
+export default function PurchaseHistory() {
+  const [leads, setLeads]                     = useState([]);
+  const [selectedStage, setSelectedStage]     = useState(null);
+  const [showAddModal, setShowAddModal]        = useState(false);
+  const [assignModalLead, setAssignModalLead] = useState(null);
+  const [syncing, setSyncing]                 = useState(true);
+
+  // Load from both funnel API (master lead copies) and self-created leads
+  useEffect(() => {
+    (async () => {
+      try {
+        setSyncing(true);
+        const [funnelRes, profileRes] = await Promise.allSettled([
+          funnelAPI.getAll(),
+          agentAPI.getProfile(),
+        ]);
+
+        const funnelLeads = funnelRes.status === 'fulfilled'
+          ? (funnelRes.value.data.data?.entries || []).map(mapFunnelEntry)
+          : [];
+
+        const selfCreated = profileRes.status === 'fulfilled'
+          ? (profileRes.value.data.data?.purchasedLeads || [])
+              .filter(({ lead }) => lead && PROSPECTING_TYPES.includes(lead.leadType))
+              .map(({ lead }) => mapSelfCreatedLead(lead))
+          : [];
+
+        // Merge: funnel entries take priority; avoid duplicates by id
+        const funnelIds = new Set(funnelLeads.map(l => l.id));
+        const merged = [...funnelLeads, ...selfCreated.filter(l => !funnelIds.has(l.id))];
+        setLeads(merged);
+      } finally {
+        setSyncing(false);
+      }
+    })();
+  }, []);
+
+  const handleAddLead = async (formData) => {
+    const optimistic = { ...formData, _source: 'self_created', _synced: false };
+    setLeads(prev => [...prev, optimistic]);
+
+    try {
+      const res = await agentAPI.createProspectingLead(formData);
+      const saved = res.data.data?.lead;
+      setLeads(prev => prev.map(l =>
+        l.id === optimistic.id
+          ? { ...optimistic, id: saved?.leadId || optimistic.id, _synced: true }
+          : l
+      ));
+    } catch {
+      // Keep optimistic entry
+    }
+  };
+
+  const handleMoveStage = async (id, newStage) => {
+    const lead  = leads.find(l => l.id === id);
+    if (!lead || lead.stage === newStage) return;
+    const today = new Date().toISOString().slice(0, 10);
+
+    setLeads(prev => prev.map(l =>
+      l.id === id
+        ? { ...l, stage: newStage, lastContactDate: newStage !== 'new_lead' ? today : l.lastContactDate }
+        : l
+    ));
+
+    // Write to stage history so Dashboard Recent Activity auto-populates
+    const histEntry = {
+      leadId: id, ownerName: lead.ownerName, propertyAddress: lead.propertyAddress,
+      fromStage: lead.stage, toStage: newStage, timestamp: new Date().toISOString(),
+    };
+    const existing = JSON.parse(localStorage.getItem('je_stage_history') || '[]');
+    localStorage.setItem('je_stage_history', JSON.stringify([histEntry, ...existing].slice(0, 50)));
+
+    try {
+      if (lead._source === 'funnel') {
+        await funnelAPI.updateEntry(id, { stage: newStage, lastContactDate: newStage !== 'new_lead' ? today : lead.lastContactDate });
+      } else {
+        await agentAPI.updateLeadStage(id, newStage);
+      }
+    } catch {
+      // Optimistic update stays
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('Remove this lead from your funnel?')) return;
+    const lead = leads.find(l => l.id === id);
+    setLeads(prev => prev.filter(l => l.id !== id));
+
+    try {
+      if (lead?._source === 'funnel') {
+        await funnelAPI.removeEntry(id);
+      } else {
+        await agentAPI.deleteLead(id);
+      }
+    } catch {}
+  };
+
+  const handleAssigned = (id) => {
+    setLeads(prev => prev.filter(l => l.id !== id));
+  };
+
+  // Computed counts
+  const counts = {};
+  FUNNEL_STAGES.forEach(s => { counts[s.id] = leads.filter(l => l.stage === s.id).length; });
+
+  // Metric cards
+  const now       = new Date();
+  const weekAgo   = new Date(now - 7 * 24 * 3600 * 1000);
+  const contactedThisWeek = leads.filter(l =>
+    l.stage === 'contacted' && l.lastContactDate && new Date(l.lastContactDate) >= weekAgo
+  ).length;
+  const apptCount    = counts['appt_set'] || 0;
+  const closedCount  = counts['closed']   || 0;
+  const convRate     = leads.length > 0 ? Math.round((closedCount / leads.length) * 100) : 0;
+
+  const displayedLeads = selectedStage
+    ? leads.filter(l => l.stage === selectedStage)
+    : leads;
+
+  const selectedStageMeta = FUNNEL_STAGES.find(s => s.id === selectedStage);
+
+  const metricCards = [
+    { label: 'Total Leads',          value: leads.length,          color: '#C9A84C' },
+    { label: 'Contacted This Week',  value: contactedThisWeek,     color: '#6BA3FF' },
+    { label: 'Appointments Set',     value: apptCount,             color: '#A78BFA' },
+    { label: 'Conversion Rate',      value: `${convRate}%`,        color: '#34D399' },
+  ];
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#07101E', fontFamily: '"Inter", sans-serif' }}>
+      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+
+        {/* Page Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.75rem' }}>
+          <div>
+            <h1 style={{ fontFamily: '"Playfair Display", serif', fontSize: '2rem', fontWeight: 700, color: '#E8ECF4', marginBottom: '0.35rem' }}>
+              My Lead Funnel
+            </h1>
+            <p style={{ color: '#4A5568', fontSize: '0.875rem', margin: 0 }}>
+              Track your Expired, FSBO, and Pre-Foreclosure leads from first contact to closed deal.
+              {syncing && <span style={{ marginLeft: '0.5rem', color: '#374151', fontSize: '0.75rem' }}>Syncing...</span>}
+            </p>
+          </div>
+          <button
+            onClick={() => setShowAddModal(true)}
+            style={{ padding: '0.65rem 1.5rem', background: 'linear-gradient(135deg, #C9A84C, #D9BD6A)', border: 'none', borderRadius: '10px', color: '#0A0F1E', fontWeight: 700, cursor: 'pointer', fontSize: '0.875rem', flexShrink: 0 }}
+          >
+            + Add Lead
+          </button>
+        </div>
+
+        {/* Metric Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.875rem', marginBottom: '2rem' }}>
+          {metricCards.map(({ label, value, color }) => (
+            <div key={label} style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '12px', padding: '1rem 1.25rem' }}>
+              <div style={{ fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#6B7280', marginBottom: '0.375rem' }}>{label}</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color, fontFamily: '"Playfair Display", serif' }}>{value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Two-column layout */}
+        <div style={{ display: 'grid', gridTemplateColumns: '45% 55%', gap: '1.5rem', alignItems: 'start' }}>
+
+          {/* LEFT — Funnel */}
+          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '2rem 1.75rem' }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#6B7280', marginBottom: '1rem' }}>
+              Pipeline Stages
+            </div>
+            <FunnelViz
+              stages={FUNNEL_STAGES}
+              counts={counts}
+              total={leads.length}
+              selectedStage={selectedStage}
+              onSelect={setSelectedStage}
+            />
+          </div>
+
+          {/* RIGHT — Lead List */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {/* List header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ fontFamily: '"Playfair Display", serif', fontSize: '1.1rem', color: '#E8ECF4', margin: '0 0 0.15rem' }}>
+                  {selectedStageMeta
+                    ? <span style={{ color: selectedStageMeta.color }}>{selectedStageMeta.label}</span>
+                    : 'All Leads'}
+                </h2>
+                <div style={{ fontSize: '0.75rem', color: '#4A5568' }}>
+                  {displayedLeads.length} {displayedLeads.length === 1 ? 'lead' : 'leads'}
+                </div>
+              </div>
+            </div>
+
+            {/* Lead cards */}
+            {displayedLeads.length > 0
+              ? displayedLeads.map(lead => (
+                  <LeadCard
+                    key={lead.id}
+                    lead={lead}
+                    onMoveStage={handleMoveStage}
+                    onDelete={handleDelete}
+                  />
+                ))
+              : (
+                <div style={{ background: '#0D1929', border: '1px solid rgba(201,168,76,0.12)', borderRadius: '12px', padding: '3rem', textAlign: 'center' }}>
+                  <div style={{ color: '#374151', fontSize: '1.5rem', marginBottom: '0.75rem' }}>—</div>
+                  <div style={{ color: '#6B7280', fontSize: '0.875rem', marginBottom: '0.35rem' }}>
+                    {selectedStageMeta ? `No leads in ${selectedStageMeta.label} yet.` : 'No leads yet.'}
+                  </div>
+                  <div style={{ color: '#374151', fontSize: '0.78rem' }}>Add a lead to get started.</div>
+                </div>
+              )
+            }
+          </div>
+        </div>
+      </div>
+
+      {showAddModal && (
+        <AddLeadModal
+          onClose={() => setShowAddModal(false)}
+          onSave={handleAddLead}
+        />
+      )}
+
+      {assignModalLead && (
+        <AssignAgentModal
+          lead={assignModalLead}
+          onClose={() => setAssignModalLead(null)}
+          onAssigned={handleAssigned}
+        />
+      )}
+    </div>
+  );
+}

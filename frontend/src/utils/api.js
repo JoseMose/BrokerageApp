@@ -32,31 +32,21 @@ export const agentAPI = {
   getProfile: () => apiClient.get('/agents'),
   createProfile: (data) => apiClient.post('/agents', data),
   updateProfile: (data) => apiClient.put('/agents', data),
-  getAssignedLeads: () => apiClient.get('/agents/assigned-leads'),
-  passLead: (leadId) => apiClient.post(`/agents/pass-lead/${leadId}`),
   getAIRecommendations: (leads) => apiClient.post('/agents/ai-recommendations', { leads }),
   updateLeadStage: (leadId, funnelStage) => apiClient.put(`/agents/leads/${leadId}`, { funnelStage }),
   updateLead: (leadId, data) => apiClient.put(`/agents/leads/${leadId}`, data),
   deleteLead: (leadId) => apiClient.delete(`/agents/leads/${leadId}`),
   logLeadActivity: (leadId, activity) => apiClient.post(`/agents/leads/${leadId}/activity`, activity),
   createOwnLead: (data) => apiClient.post('/agents/create-lead', data),
-};
-
-// Marketplace APIs
-export const marketplaceAPI = {
-  getLeads: (params) => apiClient.get('/marketplace', { params }),
-  getLead: (leadId) => apiClient.get(`/leads/${leadId}`),
-  claimLead: (leadId) => apiClient.post('/claim-lead', { leadId }),
-};
-
-// Payment APIs
-export const paymentAPI = {
-  purchaseLead: (data) => apiClient.post('/payments/purchase', data),
-};
-
-// Lead Submission API (for testing)
-export const leadAPI = {
-  submitLead: (data) => apiClient.post('/leads', data),
+  createProspectingLead: (data) => apiClient.post('/agents/create-lead', {
+    ownerName:       data.ownerName,
+    propertyAddress: data.propertyAddress,
+    leadType:        data.leadType,
+    phone:           data.phone,
+    email:           data.email,
+    stage:           data.stage,
+    notes:           data.notes,
+  }),
 };
 
 // Public Lead Generation API (no auth required)
@@ -107,21 +97,22 @@ export const adminAPI = {
   getAllPackages: () => apiClient.get('/admin/bulk-packages'),
 };
 
-// Bulk Packages APIs
-export const bulkPackagesAPI = {
-  getAvailablePackages: () => apiClient.get('/bulk-packages'),
-  purchasePackage: (packageId) => apiClient.post(`/bulk-packages/${packageId}/purchase`),
-  purchaseCustomBulk: (leadCount, pricePerLead) => apiClient.post('/bulk-packages/custom', { leadCount, pricePerLead }),
+
+// Master Leads API (shared pool — agents browse, admin manages)
+export const masterLeadsAPI = {
+  getAll: () => apiClient.get('/master-leads'),
+  seed: () => apiClient.get('/master-leads', { params: { action: 'seed' } }),
+  create: (data) => apiClient.post('/master-leads', data),
+  update: (id, data) => apiClient.put(`/master-leads/${id}`, data),
+  archive: (id) => apiClient.delete(`/master-leads/${id}`),
 };
 
-// Feedback APIs
-export const feedbackAPI = {
-  submitLeadFeedback: (data) => apiClient.post('/feedback/lead', data),
-  submitClientSurvey: (data) => apiClient.post('/feedback/survey', data),
-  getLeadFeedback: (leadId) => apiClient.get(`/feedback/lead/${leadId}`),
-  getFeedbackStats: () => apiClient.get('/feedback/stats'),
-  getPendingFeedback: () => apiClient.get('/feedback/pending'),
-  getAIAnalytics: () => apiClient.get('/feedback/analytics'), // Admin only
+// Agent Funnel API (agent's private copy of leads they are working)
+export const funnelAPI = {
+  getAll: () => apiClient.get('/funnel'),
+  addToFunnel: (masterId) => apiClient.post('/funnel', { masterId }),
+  updateEntry: (id, data) => apiClient.put(`/funnel/${id}`, data),
+  removeEntry: (id) => apiClient.delete(`/funnel/${id}`),
 };
 
 export default apiClient;

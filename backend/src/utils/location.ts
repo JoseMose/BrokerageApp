@@ -1,128 +1,130 @@
-import {
-  LocationClient,
-  SearchPlaceIndexForTextCommand,
-  CalculateRouteCommand,
-} from '@aws-sdk/client-location';
-import { getConfig } from './types';
+/**
+ * Location Service — HERE Maps API (replaces AWS Location Service)
+ * Same public interface; handlers require zero changes.
+ */
 
-const config = getConfig();
-const locationClient = new LocationClient({ region: config.AWS_REGION });
+import https from 'https';
+
+const HERE_API_KEY = process.env.HERE_API_KEY || '';
 
 export interface Coordinates {
   lat: number;
   lng: number;
 }
 
+// ── HTTP helper ──────────────────────────────────────────────────────────────
+
+function httpGet(url: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    https.get(url, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch (e) { reject(new Error('Failed to parse HERE response')); }
+      });
+    }).on('error', reject);
+  });
+}
+
+// ── LocationService ──────────────────────────────────────────────────────────
+
 export class LocationService {
   /**
-   * Geocode an address to coordinates
+   * Geocode a street address to lat/lng using HERE Geocoding API.
    */
-  static async geocodeAddress(address: string, city: string, state: string, zip: string): Promise<Coordinates> {
-    try {
-      const fullAddress = `${address}, ${city}, ${state} ${zip}`;
-      
-      const command = new SearchPlaceIndexForTextCommand({
-        IndexName: config.PLACE_INDEX_NAME,
-        Text: fullAddress,
-        MaxResults: 1,
-      });
+  static async geocodeAddress(
+    address: string,
+    city: string,
+    state: string,
+    zip: string
+  ): Promise<Coordinates> {
+    const query = encodeURIComponent(`${address}, ${city}, ${state} ${zip}`);
+    const url   = `https://geocode.search.hereapi.com/v1/geocode?q=${query}&apiKey=${HERE_API_KEY}`;
 
-      const response = await locationClient.send(command);
+    const data = await httpGet(url);
 
-      if (!response.Results || response.Results.length === 0) {
-        throw new Error('Address not found');
-      }
-
-      const [lng, lat] = response.Results[0].Place?.Geometry?.Point || [0, 0];
-
-      return { lat, lng };
-    } catch (error) {
-      console.error('Geocoding error:', error);
-      throw new Error('Failed to geocode address');
+    if (!data.items || data.items.length === 0) {
+      throw new Error(`Address not found: ${address}, ${city}, ${state} ${zip}`);
     }
+
+    const { lat, lng } = data.items[0].position;
+    return { lat, lng };
   }
 
   /**
-   * Calculate distance between two points in miles
+   * Calculate driving distance in miles between two points.
+   * Falls back to haversine if the routing call fails (rate-limit, etc.).
    */
   static async calculateDistance(
     origin: Coordinates,
     destination: Coordinates
   ): Promise<number> {
     try {
-      const command = new CalculateRouteCommand({
-        CalculatorName: config.ROUTE_CALCULATOR_NAME,
-        DeparturePosition: [origin.lng, origin.lat],
-        DestinationPosition: [destination.lng, destination.lat],
-        TravelMode: 'Car',
-        DistanceUnit: 'Miles',
-      });
+      const url = [
+        'https://router.hereapi.com/v8/routes',
+        `?transportMode=car`,
+        `&origin=${origin.lat},${origin.lng}`,
+        `&destination=${destination.lat},${destination.lng}`,
+        `&return=summary`,
+        `&apiKey=${HERE_API_KEY}`,
+      ].join('');
 
-      const response = await locationClient.send(command);
+      const data = await httpGet(url);
+      const meters = data.routes?.[0]?.sections?.[0]?.summary?.length;
 
-      if (!response.Summary?.Distance) {
-        throw new Error('Could not calculate distance');
-      }
+      if (!meters) throw new Error('No route summary');
 
-      return response.Summary.Distance;
-    } catch (error) {
-      console.error('Distance calculation error:', error);
-      // Fallback to haversine formula if route calculation fails
-      return this.haversineDistance(origin, destination);
+      // Convert metres → miles
+      return meters / 1609.344;
+    } catch (err) {
+      console.warn('HERE routing failed, using haversine fallback:', err);
+      return LocationService.haversineDistance(origin, destination);
     }
   }
 
   /**
-   * Haversine formula for calculating distance between two points
-   * Used as fallback when route calculation is not available
+   * Haversine great-circle distance (miles).  Used as fallback.
    */
-  private static haversineDistance(coord1: Coordinates, coord2: Coordinates): number {
-    const R = 3959; // Earth's radius in miles
-    const dLat = this.toRadians(coord2.lat - coord1.lat);
-    const dLng = this.toRadians(coord2.lng - coord1.lng);
-
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.toRadians(coord1.lat)) *
-        Math.cos(this.toRadians(coord2.lat)) *
-        Math.sin(dLng / 2) *
-        Math.sin(dLng / 2);
-
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
+  private static haversineDistance(a: Coordinates, b: Coordinates): number {
+    const R    = 3959;
+    const dLat = LocationService.rad(b.lat - a.lat);
+    const dLng = LocationService.rad(b.lng - a.lng);
+    const x =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(LocationService.rad(a.lat)) *
+        Math.cos(LocationService.rad(b.lat)) *
+        Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
   }
 
-  private static toRadians(degrees: number): number {
-    return degrees * (Math.PI / 180);
+  private static rad(deg: number): number {
+    return deg * (Math.PI / 180);
   }
 
   /**
-   * Filter agents within radius of a location
+   * Filter a list of agents to those within radius of a lead location.
    */
   static async getAgentsWithinRadius(
     leadLocation: Coordinates,
     agents: any[],
     maxRadius?: number
   ): Promise<Array<{ agent: any; distance: number }>> {
-    const agentsWithDistance = await Promise.all(
+    const defaultRadius = parseInt(process.env.DEFAULT_RADIUS_MILES || '15');
+
+    const results = await Promise.all(
       agents.map(async (agent) => {
-        const distance = await this.calculateDistance(
+        const distance = await LocationService.calculateDistance(
           leadLocation,
           { lat: agent.location.lat, lng: agent.location.lng }
         );
-
-        const agentRadius = maxRadius || agent.radius || config.DEFAULT_RADIUS_MILES;
-
-        return {
-          agent,
-          distance,
-          withinRadius: distance <= agentRadius,
-        };
+        const radius = maxRadius || agent.radius || defaultRadius;
+        return { agent, distance, withinRadius: distance <= radius };
       })
     );
 
-    return agentsWithDistance
-      .filter((item) => item.withinRadius)
+    return results
+      .filter((r) => r.withinRadius)
       .map(({ agent, distance }) => ({ agent, distance }))
       .sort((a, b) => a.distance - b.distance);
   }
