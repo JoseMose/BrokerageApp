@@ -39,7 +39,7 @@ function Navigation({ user, signOut }) {
           <Link to="/profile" className="nav-link">Profile</Link>
           
           <div className="nav-user">
-            <span className="user-email">{user?.signInDetails?.loginId || user?.username}</span>
+            <span className="user-email">{user?.email || user?.username}</span>
             <button onClick={handleSignOut} className="btn btn-outline btn-sm">
               Sign Out
             </button>

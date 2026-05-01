@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getCurrentUser } from 'aws-amplify/auth';
+import { getCurrentUser } from '../utils/ibmAuth';
 import { agentAPI } from '../utils/api';
 import { formatDateTime } from '../utils/helpers';
 import './Dashboard.css';
@@ -66,7 +66,7 @@ function Dashboard() {
     fetchDashboardData();
     loadActivities();
     loadCachedRecommendations();
-    getCurrentUser().then(setAuthUser).catch(() => {});
+    setAuthUser(getCurrentUser());
   }, []);
 
   // Monitor activity changes and filter recommendations (NO AI CALL)
@@ -262,7 +262,7 @@ function Dashboard() {
     if (profileFirst && profileFirst.toLowerCase() !== 'test' && profileFirst.toLowerCase() !== 'agent') {
       return profileFirst;
     }
-    const email = authUser?.signInDetails?.loginId || authUser?.username || profile?.email || '';
+    const email = authUser?.email || authUser?.username || profile?.email || '';
     if (email) return email.split('@')[0];
     return 'there';
   })();

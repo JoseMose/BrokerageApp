@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchAuthSession, getCurrentUser, signOut } from 'aws-amplify/auth';
+import { getCurrentUser, logout } from '../utils/ibmAuth';
 import {
   LineChart,
   Line,
@@ -49,23 +49,17 @@ export default function AdminDashboard() {
     }
   }, [activeTab, loading]);
 
-  const checkAdminAccess = async () => {
-    try {
-      const session = await fetchAuthSession();
-      const groups = session.tokens?.accessToken?.payload['cognito:groups'] || [];
+  const checkAdminAccess = () => {
+    const user   = getCurrentUser();
+    const groups = user?.['cognito:groups'] || [];
 
-      // Accept both 'Admin' and 'Admins' for backwards compatibility
-      if (!groups.includes('Admin') && !groups.includes('Admins')) {
-        alert('Access denied. Admin privileges required.');
-        navigate('/dashboard');
-        return;
-      }
-
-      setLoading(false);
-    } catch (error) {
-      console.error('Admin auth check failed:', error);
-      navigate('/login');
+    if (!groups.includes('Admin') && !groups.includes('Admins')) {
+      alert('Access denied. Admin privileges required.');
+      navigate('/dashboard');
+      return;
     }
+
+    setLoading(false);
   };
 
   const fetchData = async () => {
@@ -105,13 +99,8 @@ export default function AdminDashboard() {
     );
   }
 
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-      navigate('/login');
-    } catch (error) {
-      console.error('Sign out error:', error);
-    }
+  const handleSignOut = () => {
+    logout();
   };
 
   return (

@@ -1,24 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Authenticator } from '@aws-amplify/ui-react';
-import { getCurrentUser } from 'aws-amplify/auth';
-import '@aws-amplify/ui-react/styles.css';
+import { login, isAuthenticated } from '../utils/ibmAuth';
 import './RealtorAuth.css';
 
 function RealtorAuth() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check if already authenticated and redirect
-    const checkAuth = async () => {
-      try {
-        await getCurrentUser();
-        navigate('/dashboard');
-      } catch (error) {
-        // Not authenticated, stay on this page
-      }
-    };
-    checkAuth();
+    if (isAuthenticated()) {
+      navigate('/dashboard', { replace: true });
+    }
   }, [navigate]);
 
   return (
@@ -39,80 +30,25 @@ function RealtorAuth() {
           </p>
         </div>
 
-        <Authenticator
-          socialProviders={[]}
-          variation="default"
-          signUpAttributes={[
-            'name',
-            'email',
-            'phone_number',
-            'custom:licenseId',
-            'custom:licenseState',
-            'custom:brokerage'
-          ]}
-          formFields={{
-            signUp: {
-              name: {
-                order: 1,
-                isRequired: true,
-                label: 'Full Name',
-                placeholder: 'John Doe'
-              },
-              email: {
-                order: 2,
-                isRequired: true,
-                label: 'Email',
-                placeholder: 'your@email.com'
-              },
-              'custom:licenseId': {
-                order: 3,
-                isRequired: true,
-                label: 'Real Estate License Number',
-                placeholder: 'e.g., CA-DRE-12345678'
-              },
-              'custom:licenseState': {
-                order: 4,
-                isRequired: true,
-                label: 'License State',
-                placeholder: 'e.g., CA'
-              },
-              'custom:brokerage': {
-                order: 5,
-                isRequired: true,
-                label: 'Brokerage Name',
-                placeholder: 'e.g., Keller Williams, RE/MAX, etc.'
-              },
-              phone_number: {
-                order: 6,
-                isRequired: true,
-                label: 'Phone Number',
-                placeholder: '+1234567890'
-              },
-              password: {
-                order: 7,
-                isRequired: true,
-                label: 'Password',
-                placeholder: 'Enter your password'
-              },
-            },
+        <button
+          onClick={login}
+          style={{
+            width: '100%',
+            padding: '0.875rem 1.5rem',
+            background: 'linear-gradient(135deg, #C9A84C, #D9BD6A)',
+            color: '#0A0F1E',
+            border: 'none',
+            borderRadius: '12px',
+            fontSize: '1rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+            letterSpacing: '0.03em',
           }}
         >
-          {({ user }) => {
-            // Redirect authenticated users
-            if (user) {
-              navigate('/dashboard', { replace: true });
-              return (
-                <div className="loading">
-                  <div className="spinner"></div>
-                  <p>Redirecting to dashboard...</p>
-                </div>
-              );
-            }
-            return null;
-          }}
-        </Authenticator>
+          Sign In / Create Account
+        </button>
 
-        <div className="auth-footer">
+        <div className="auth-footer" style={{ marginTop: '1.5rem' }}>
           <p>
             <a href="/">← Back to Home</a>
           </p>
